@@ -1,0 +1,16 @@
+{
+  "name": "gran-chaique",
+  "version": "1.0.0",
+  "main": "server/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "check": "node --check server/server.js && node --check public/main.js && node --check public/views/authView.js && node --check public/views/courseView.js && node --check public/views/dashboardView.js"
+  },
+  "engines": {
+    "node": "22.22.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
