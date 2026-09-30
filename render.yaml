@@ -3,12 +3,16 @@ services:
     name: gran-chaique
     runtime: node
     plan: starter
-    buildCommand: npm run check
-    startCommand: npm start
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: node --env-file-if-exists=.env dist/server/server.js
     healthCheckPath: /healthz
     envVars:
       - key: NODE_VERSION
         value: "22.22.0"
+      - key: NODE_ENV
+        value: production
+      - key: APP_TIME_ZONE
+        value: America/Mexico_City
       - key: DATA_DIR
         value: /var/data
       - key: UPLOADS_DIR

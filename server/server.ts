@@ -4,13 +4,21 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+type Session = { userId: number; expiresAt: number };
+type UserRow = { id: number; codigoUsuario: string; user: string; pass: string; progreso: number; calificacion: number; rol: 'admin' | 'usuario'; manual_override?: number };
+type PublicUserRow = Omit<UserRow, 'pass' | 'manual_override'>;
+type JsonObject = Record<string, unknown>;
+type JsonHandler = (body: JsonObject) => void;
 
 const PORT = process.env.PORT || 8080;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_JSON_BYTES = 1_000_000;
-const SERVER_BUILD = 'progress-endpoint-v1-2026-08-16';
+const SERVER_BUILD = 'responsive-deploy-v2-2026-09-29';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const root = path.join(__dirname, '..');
+// Compiled output lives in dist/server; keep static assets and persistent data rooted at the project.
+const root = path.resolve(__dirname, '..', '..');
 const dataDir = process.env.DATA_DIR || path.join(root, 'server', 'data');
 const dbPath = path.join(dataDir, 'app.sqlite');
 const uploadsDir = process.env.UPLOADS_DIR || path.join(root, 'uploads');
@@ -20,6 +28,7 @@ const db = new DatabaseSync(dbPath);
 
 db.exec(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  codigo_usuario TEXT,
   user TEXT UNIQUE,
   pass TEXT,
   progreso INTEGER DEFAULT 0,
@@ -29,11 +38,61 @@ db.exec(`CREATE TABLE IF NOT EXISTS users (
 
 const schema = db.prepare("PRAGMA table_info(users)").all();
 const fields = schema.map((col) => col.name);
+if (!fields.includes('codigo_usuario')) db.exec('ALTER TABLE users ADD COLUMN codigo_usuario TEXT');
 if (!fields.includes('progreso')) db.exec('ALTER TABLE users ADD COLUMN progreso INTEGER DEFAULT 0');
 if (!fields.includes('calificacion')) db.exec('ALTER TABLE users ADD COLUMN calificacion INTEGER DEFAULT 0');
 if (!fields.includes('rol')) db.exec('ALTER TABLE users ADD COLUMN rol TEXT DEFAULT "usuario"');
 if (!fields.includes('manual_override')) db.exec('ALTER TABLE users ADD COLUMN manual_override INTEGER DEFAULT 0');
 db.exec('UPDATE users SET manual_override = 0 WHERE manual_override <> 0');
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_codigo_usuario ON users(codigo_usuario) WHERE codigo_usuario IS NOT NULL AND codigo_usuario <> ''");
+db.exec(`CREATE TABLE IF NOT EXISTS daily_user_sequences (
+  date_key TEXT PRIMARY KEY,
+  last_number INTEGER NOT NULL
+)`);
+
+function nextPublicUserId(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: process.env.APP_TIME_ZONE || 'America/Mexico_City',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  const year = dateParts.year;
+  const month = dateParts.month;
+  const day = dateParts.day;
+  const dateKey = `${year}${month}${day}`;
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const current = db.prepare('SELECT last_number FROM daily_user_sequences WHERE date_key = ?').get(dateKey);
+    const next = Number(current?.last_number || 0) + 1;
+    db.prepare(`
+      INSERT INTO daily_user_sequences (date_key, last_number) VALUES (?, ?)
+      ON CONFLICT(date_key) DO UPDATE SET last_number = excluded.last_number
+    `).run(dateKey, next);
+    db.exec('COMMIT');
+    return `${year.slice(-2)}${month}${day}${String(next).padStart(2, '0')}`;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+db.prepare("SELECT id FROM users WHERE codigo_usuario IS NULL OR codigo_usuario = ''").all()
+  .forEach(({ id }) => {
+    db.prepare('UPDATE users SET codigo_usuario = ? WHERE id = ?').run(nextPublicUserId(), id);
+  });
+
+const legacyPublicIds = db.prepare("SELECT id, codigo_usuario FROM users WHERE codigo_usuario LIKE '%/%'").all() as Array<{ id: number; codigo_usuario: string }>;
+for (const row of legacyPublicIds) {
+  const match = /^(\d{4})\/(\d{2})\/(\d{2})\/(\d+)$/.exec(row.codigo_usuario);
+  if (!match) continue;
+  const compactSequence = String(Number(match[4])).padStart(2, '0');
+  const compactId = `${match[1].slice(-2)}${match[2]}${match[3]}${compactSequence}`;
+  const collision = db.prepare('SELECT id FROM users WHERE codigo_usuario = ? AND id <> ?').get(compactId, row.id);
+  db.prepare('UPDATE users SET codigo_usuario = ? WHERE id = ?').run(collision ? nextPublicUserId() : compactId, row.id);
+}
 
 db.exec(`CREATE TABLE IF NOT EXISTS exercises (
   id TEXT PRIMARY KEY,
@@ -63,10 +122,11 @@ const userProgressFields = userProgressSchema.map((col) => col.name);
 if (!userProgressFields.includes('answer_data')) db.exec("ALTER TABLE user_progress ADD COLUMN answer_data TEXT DEFAULT '{}'");
 if (!userProgressFields.includes('completed')) db.exec('ALTER TABLE user_progress ADD COLUMN completed INTEGER DEFAULT 1');
 
-function recomputeUserProgress(userId) {
+function recomputeUserProgress(userId: number): { progresoPct: number; calificacionPct: number } {
   const userRow = db.prepare('SELECT manual_override FROM users WHERE id = ?').get(userId);
   if (userRow && userRow.manual_override) {
-    const current = db.prepare('SELECT progreso, calificacion FROM users WHERE id = ?').get(userId);
+    const current = db.prepare('SELECT progreso, calificacion FROM users WHERE id = ?').get(userId) as { progreso: number; calificacion: number } | undefined;
+    if (!current) return { progresoPct: 0, calificacionPct: 0 };
     return { progresoPct: current.progreso, calificacionPct: current.calificacion };
   }
 
@@ -74,14 +134,14 @@ function recomputeUserProgress(userId) {
   const totalRow = db.prepare(`
     SELECT COUNT(*) AS exerciseCount, COALESCE(SUM(CASE WHEN points > 0 THEN points ELSE 1 END), 0) AS totalPoints
     FROM exercises WHERE type NOT IN (${gradableTypes})
-  `).get();
+  `).get() as { exerciseCount: number; totalPoints: number };
   const scoreRow = db.prepare(`
     SELECT COUNT(*) AS completedCount,
       COALESCE(SUM(CASE WHEN user_progress.correct THEN CASE WHEN exercises.points > 0 THEN exercises.points ELSE 1 END ELSE 0 END), 0) AS earnedPoints
     FROM user_progress
     INNER JOIN exercises ON exercises.id = user_progress.exercise_id
     WHERE user_progress.user_id = ? AND user_progress.completed = 1 AND exercises.type NOT IN (${gradableTypes})
-  `).get(userId);
+  `).get(userId) as { completedCount: number; earnedPoints: number };
 
   const progresoPct = totalRow.exerciseCount > 0 ? Math.round((scoreRow.completedCount / totalRow.exerciseCount) * 100) : 0;
   const calificacionPct = totalRow.totalPoints > 0 ? Math.round((scoreRow.earnedPoints / totalRow.totalPoints) * 100) : 0;
@@ -90,13 +150,13 @@ function recomputeUserProgress(userId) {
   return { progresoPct, calificacionPct };
 }
 
-const isPasswordHash = (value) => typeof value === 'string' && value.startsWith('scrypt$');
-const hashPassword = (password) => {
+const isPasswordHash = (value: unknown): value is string => typeof value === 'string' && value.startsWith('scrypt$');
+const hashPassword = (password: string): string => {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(password, salt, 64).toString('hex');
   return `scrypt$${salt}$${hash}`;
 };
-const verifyPassword = (password, stored) => {
+const verifyPassword = (password: string, stored: string | null | undefined): boolean => {
   if (!stored) return false;
   if (!isPasswordHash(stored)) {
     const passwordBuffer = Buffer.from(password);
@@ -104,49 +164,70 @@ const verifyPassword = (password, stored) => {
     return passwordBuffer.length === storedBuffer.length && crypto.timingSafeEqual(passwordBuffer, storedBuffer);
   }
   const [, salt, expected] = stored.split('$');
+  if (!salt || !expected) return false;
   const actual = crypto.scryptSync(password, salt, 64).toString('hex');
   return crypto.timingSafeEqual(Buffer.from(actual, 'hex'), Buffer.from(expected, 'hex'));
 };
-const assertValidCredentials = (user, pass) => {
+const assertValidCredentials = (user: unknown, pass: unknown): string | null => {
   if (typeof user !== 'string' || !/^[a-zA-Z0-9._-]{3,50}$/.test(user)) return 'El usuario debe tener entre 3 y 50 caracteres (letras, números, punto, guion o guion bajo).';
   if (typeof pass !== 'string' || pass.length < 10 || pass.length > 128) return 'La contraseña debe tener entre 10 y 128 caracteres.';
   return null;
 };
-const assertValidLogin = (user, pass) => {
+const assertValidLogin = (user: unknown, pass: unknown): string | null => {
   if (typeof user !== 'string' || !/^[a-zA-Z0-9._-]{3,50}$/.test(user)) return 'El usuario no tiene un formato válido.';
   if (typeof pass !== 'string' || pass.length < 1 || pass.length > 128) return 'La contraseña no tiene un formato válido.';
   return null;
 };
 
-const sessions = new Map();
-const parseCookies = (header = '') => Object.fromEntries(header.split(';').map((part) => {
+const sessions = new Map<string, Session>();
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+function isLoginRateLimited(ip: string): boolean {
+  const now = Date.now();
+  for (const [key, attempt] of loginAttempts) {
+    if (attempt.resetAt <= now) loginAttempts.delete(key);
+  }
+  const current = loginAttempts.get(ip);
+  return !!current && current.resetAt > now && current.count >= LOGIN_MAX_ATTEMPTS;
+}
+function recordFailedLogin(ip: string): void {
+  const now = Date.now();
+  const current = loginAttempts.get(ip);
+  if (!current || current.resetAt <= now) {
+    loginAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return;
+  }
+  current.count += 1;
+}
+const parseCookies = (header = ''): Record<string, string> => Object.fromEntries(header.split(';').map((part) => {
   const index = part.indexOf('=');
   return index < 0 ? [] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1))];
 }).filter((entry) => entry.length));
-const getSessionUser = (req) => {
+const getSessionUser = (req: IncomingMessage): PublicUserRow | null => {
   const token = parseCookies(req.headers.cookie || '').session;
   const session = token && sessions.get(token);
   if (!session || session.expiresAt < Date.now()) {
     if (token) sessions.delete(token);
     return null;
   }
-  return db.prepare('SELECT id, user, progreso, calificacion, rol FROM users WHERE id = ?').get(session.userId) || null;
+  return db.prepare('SELECT id, codigo_usuario AS codigoUsuario, user, progreso, calificacion, rol FROM users WHERE id = ?').get(session.userId) as PublicUserRow | undefined || null;
 };
-const setSession = (res, userId) => {
+const setSession = (res: ServerResponse, userId: number): void => {
   const token = crypto.randomBytes(32).toString('base64url');
   sessions.set(token, { userId, expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 });
   const secure = IS_PRODUCTION ? '; Secure' : '';
   res.setHeader('Set-Cookie', `session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=604800${secure}`);
 };
-const clearSession = (req, res) => {
+const clearSession = (req: IncomingMessage, res: ServerResponse): void => {
   const token = parseCookies(req.headers.cookie || '').session;
   if (token) sessions.delete(token);
   res.setHeader('Set-Cookie', `session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
 };
-const readJson = (req, res, handler) => {
+const readJson = (req: IncomingMessage, res: ServerResponse, handler: JsonHandler): void => {
   let size = 0;
   let body = '';
-  req.on('data', (chunk) => {
+  req.on('data', (chunk: Buffer) => {
     size += chunk.length;
     if (size > MAX_JSON_BYTES) {
       req.destroy();
@@ -156,31 +237,36 @@ const readJson = (req, res, handler) => {
   });
   req.on('end', () => {
     if (size > MAX_JSON_BYTES) return sendJson(res, 413, { message: 'La solicitud excede el tamaño permitido.' });
-    try { handler(JSON.parse(body || '{}')); } catch { sendJson(res, 400, { message: 'Datos inválidos.' }); }
+    try {
+      const payload: unknown = JSON.parse(body || '{}');
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sendJson(res, 400, { message: 'Datos inválidos.' });
+      handler(payload as JsonObject);
+    } catch { sendJson(res, 400, { message: 'Datos inválidos.' }); }
   });
 };
 
-const adminCount = db.prepare("SELECT COUNT(*) AS count FROM users WHERE rol = 'admin'").get().count;
+const adminCount = (db.prepare("SELECT COUNT(*) AS count FROM users WHERE rol = 'admin'").get() as { count: number }).count;
 if (!adminCount) {
-  const adminUser = process.env.ADMIN_USER;
+  const adminUser = process.env.ADMIN_USER || (!IS_PRODUCTION ? 'Ako' : undefined);
   const adminPassword = process.env.ADMIN_PASSWORD;
   const validationError = assertValidCredentials(adminUser, adminPassword);
   if (validationError) {
     if (IS_PRODUCTION) throw new Error(`Se requiere ADMIN_USER y ADMIN_PASSWORD seguros para iniciar producción. ${validationError}`);
-  } else {
-    db.prepare('INSERT INTO users (user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?)')
-      .run(adminUser, hashPassword(adminPassword), 0, 0, 'admin');
+  } else if (typeof adminUser === 'string' && typeof adminPassword === 'string') {
+    db.prepare('INSERT INTO users (codigo_usuario, user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(nextPublicUserId(), adminUser, hashPassword(adminPassword), 0, 0, 'admin');
   }
 }
 recomputeAllUsers();
 
 function recomputeAllUsers() {
-  db.prepare('SELECT id FROM users').all().forEach(({ id }) => recomputeUserProgress(id));
+  (db.prepare('SELECT id FROM users').all() as Array<{ id: number }>).forEach(({ id }) => recomputeUserProgress(id));
 }
 
-const types = {
+const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.ts': 'application/typescript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.pdf': 'application/pdf',
@@ -198,37 +284,77 @@ const types = {
   '.svg': 'image/svg+xml'
 };
 
-const sendJson = (res, status, obj) => {
+const sendJson = (res: ServerResponse, status: number, obj: unknown): void => {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(JSON.stringify(obj));
 };
 
 const server = http.createServer((req, res) => {
+  try {
+    handleRequest(req, res);
+  } catch (error) {
+    console.error('[server] Error no controlado:', error instanceof Error ? error.message : 'Error desconocido');
+    sendErrorPage(res, 500);
+  }
+});
+
+function sendErrorPage(res: ServerResponse, status: 404 | 500): void {
+  if (res.headersSent) {
+    res.destroy();
+    return;
+  }
+  const errorFile = path.join(root, 'public', 'static', `${status}.html`);
+  fs.readFile(errorFile, (error, content) => {
+    if (error) {
+      res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end('<!doctype html><html lang="es"><meta charset="utf-8"><title>Error · Gran Chaique</title><h1>La solicitud no pudo completarse.</h1><a href="/">Ir al inicio</a></html>');
+      return;
+    }
+    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(content);
+  });
+}
+
+function handleRequest(req: IncomingMessage, res: ServerResponse): void {
+  const requestUrl = req.url || '/';
   const declaredLength = Number(req.headers['content-length'] || 0);
-  const requestLimit = req.url === '/api/upload' ? 21 * 1024 * 1024 : MAX_JSON_BYTES;
+  const requestLimit = requestUrl === '/api/upload' ? 21 * 1024 * 1024 : MAX_JSON_BYTES;
   if (declaredLength > requestLimit) {
     sendJson(res, 413, { message: 'La solicitud excede el tamaño permitido.' });
     return;
   }
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; object-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self'; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; object-src 'none'; style-src 'self'; script-src 'self'; img-src 'self' data:; media-src 'self'; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self'");
+  if (IS_PRODUCTION) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   if (req.method === 'OPTIONS') {
     res.writeHead(204, { Allow: 'GET, POST, PUT, DELETE, OPTIONS' });
     res.end();
     return;
   }
-  if (['POST', 'PUT', 'DELETE'].includes(req.method) && req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) {
+  const isMutation = ['POST', 'PUT', 'DELETE'].includes(req.method || '');
+  const expectedOrigin = req.headers.host ? `${IS_PRODUCTION ? 'https' : 'http'}://${req.headers.host}` : undefined;
+  if (isMutation && ((IS_PRODUCTION && req.headers.origin !== expectedOrigin) || (req.headers.origin && expectedOrigin && req.headers.origin !== expectedOrigin))) {
     sendJson(res, 403, { message: 'Origen no autorizado.' });
     return;
   }
-  const requestPath = req.url.split('?')[0];
-  const url = requestPath === '/' ? '/index.html' : requestPath;
+  const requestPath = requestUrl.split('?')[0];
+  const url = requestPath === '/' || requestPath === '/index.html' ? '/index.html' : requestPath;
 
-  if (req.method === 'GET' && req.url === '/healthz') {
-    sendJson(res, 200, { status: 'ok', build: SERVER_BUILD });
+  if (req.method === 'GET' && (requestUrl === '/health' || requestUrl === '/healthz')) {
+    try {
+      db.prepare('SELECT 1').get();
+      sendJson(res, 200, { status: 'ok', database: 'ok', build: SERVER_BUILD });
+    } catch {
+      sendJson(res, 503, { status: 'error', database: 'unavailable' });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && requestUrl.split('?')[0] === '/500') {
+    sendErrorPage(res, 500);
     return;
   }
 
@@ -249,7 +375,7 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    const users = db.prepare('SELECT id, user, progreso, calificacion, rol, manual_override FROM users ORDER BY id').all();
+    const users = db.prepare('SELECT id, codigo_usuario AS codigoUsuario, user, progreso, calificacion, rol, manual_override FROM users ORDER BY id').all();
     sendJson(res, 200, { users });
     return;
   }
@@ -265,7 +391,7 @@ const server = http.createServer((req, res) => {
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
       try {
-        const { id, user, pass, progreso, calificacion, rol } = JSON.parse(body || '{}');
+        const { id, user, pass, rol } = JSON.parse(body || '{}');
         if (!id || !user || !rol || (pass && typeof pass !== 'string')) {
           sendJson(res, 400, { message: 'Faltan datos para actualizar.' });
           return;
@@ -288,7 +414,10 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        const password = pass ? hashPassword(pass) : db.prepare('SELECT pass FROM users WHERE id = ?').get(id).pass;
+        const currentUser = db.prepare('SELECT pass FROM users WHERE id = ?').get(id) as { pass: string } | undefined;
+        if (!pass && !currentUser) return sendJson(res, 404, { message: 'Usuario no encontrado.' });
+        const password = pass ? hashPassword(pass) : currentUser?.pass;
+        if (!password) return sendJson(res, 404, { message: 'Usuario no encontrado.' });
         db.prepare('UPDATE users SET user = ?, pass = ?, rol = ?, manual_override = 0 WHERE id = ?')
           .run(user, password, rol, Number(id));
         recomputeUserProgress(Number(id));
@@ -334,14 +463,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'DELETE' && req.url.startsWith('/api/user')) {
+  if (req.method === 'DELETE' && requestUrl.startsWith('/api/user')) {
     const session = getSessionUser(req);
     if (!session || session.rol !== 'admin') {
       sendJson(res, 403, { message: 'No autorizado' });
       return;
     }
 
-    const id = Number(new URL(req.url, `http://${req.headers.host}`).searchParams.get('id'));
+    const id = Number(new URL(requestUrl, `http://${req.headers.host || 'localhost'}`).searchParams.get('id'));
     if (!id) {
       sendJson(res, 400, { message: 'Id inválido.' });
       return;
@@ -365,7 +494,7 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    const rows = db.prepare('SELECT id, type, title, prompt, points, data FROM exercises ORDER BY position, rowid').all();
+    const rows = db.prepare('SELECT id, type, title, prompt, points, data FROM exercises ORDER BY position, rowid').all() as Array<{ id: string; type: string; title: string; prompt: string; points: number; data: string }>;
     const exercises = rows.map((row) => {
       let data = {};
       try { data = JSON.parse(row.data || '{}'); } catch { data = {}; }
@@ -405,8 +534,42 @@ const server = http.createServer((req, res) => {
 
         sendJson(res, 200, { url: `/uploads/${finalName}`, fileName, mimeType: mimeType || '' });
       } catch (err) {
-        console.log('[upload] Error:', err.message);
+        console.error('[upload] Error:', err instanceof Error ? err.message : 'Error desconocido');
         sendJson(res, 400, { message: 'No se pudo subir el archivo.' });
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'DELETE' && req.url === '/api/exercises') {
+    const session = getSessionUser(req);
+    if (!session || session.rol !== 'admin') {
+      sendJson(res, 403, { message: 'No autorizado' });
+      return;
+    }
+
+    readJson(req, res, ({ ids }) => {
+      if (!Array.isArray(ids) || ids.length < 1 || ids.length > 200 || ids.some((id) => typeof id !== 'string' || id.length > 200)) {
+        sendJson(res, 400, { message: 'Selecciona entre 1 y 200 ejercicios válidos.' });
+        return;
+      }
+
+      const uniqueIds = [...new Set(ids)];
+      try {
+        db.exec('BEGIN IMMEDIATE');
+        const deleteExercise = db.prepare('DELETE FROM exercises WHERE id = ?');
+        const deleteProgress = db.prepare('DELETE FROM user_progress WHERE exercise_id = ?');
+        let deletedCount = 0;
+        uniqueIds.forEach((id) => {
+          deletedCount += Number(deleteExercise.run(id).changes);
+          deleteProgress.run(id);
+        });
+        db.exec('COMMIT');
+        recomputeAllUsers();
+        sendJson(res, 200, { message: 'Ejercicios eliminados.', deletedCount });
+      } catch {
+        db.exec('ROLLBACK');
+        sendJson(res, 500, { message: 'No se pudieron eliminar los ejercicios.' });
       }
     });
     return;
@@ -455,12 +618,12 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        const existing = db.prepare('SELECT position FROM exercises WHERE id = ?').get(id);
+        const existing = db.prepare('SELECT position FROM exercises WHERE id = ?').get(id) as { position: number } | undefined;
         let position;
         if (existing) {
           position = existing.position;
         } else {
-          const maxRow = db.prepare('SELECT COALESCE(MAX(position), -1) as maxPos FROM exercises').get();
+          const maxRow = db.prepare('SELECT COALESCE(MAX(position), -1) as maxPos FROM exercises').get() as { maxPos: number };
           position = maxRow.maxPos + 1;
         }
 
@@ -484,14 +647,14 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === 'DELETE' && req.url.startsWith('/api/exercise')) {
+  if (req.method === 'DELETE' && requestUrl.startsWith('/api/exercise')) {
     const session = getSessionUser(req);
     if (!session || session.rol !== 'admin') {
       sendJson(res, 403, { message: 'No autorizado' });
       return;
     }
 
-    const id = new URL(req.url, `http://${req.headers.host}`).searchParams.get('id');
+    const id = new URL(requestUrl, `http://${req.headers.host || 'localhost'}`).searchParams.get('id');
     if (!id) {
       sendJson(res, 400, { message: 'Id inválido.' });
       return;
@@ -507,18 +670,21 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && req.url === '/api/me') {
     const session = getSessionUser(req);
     if (!session) {
-      sendJson(res, 403, { message: 'No autorizado' });
+      // No session is a normal state on the login page, not a failed resource.
+      sendJson(res, 200, { authenticated: false });
       return;
     }
 
-    const userRow = db.prepare('SELECT id, user, progreso, calificacion, rol FROM users WHERE id = ?').get(session.id);
+    const userRow = db.prepare('SELECT id, codigo_usuario AS codigoUsuario, user, progreso, calificacion, rol FROM users WHERE id = ?').get(session.id);
     if (!userRow) {
       sendJson(res, 404, { message: 'Usuario no encontrado.' });
       return;
     }
 
     sendJson(res, 200, {
+      authenticated: true,
       id: userRow.id,
+      codigoUsuario: userRow.codigoUsuario,
       user: userRow.user,
       role: userRow.rol,
       progreso: userRow.progreso,
@@ -534,8 +700,8 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    const rows = db.prepare('SELECT exercise_id, correct, answer_data, completed FROM user_progress WHERE user_id = ?').all(session.id);
-    const userRow = db.prepare('SELECT progreso, calificacion FROM users WHERE id = ?').get(session.id);
+    const rows = db.prepare('SELECT exercise_id, correct, answer_data, completed FROM user_progress WHERE user_id = ?').all(session.id) as Array<{ exercise_id: string; correct: number; answer_data: string; completed: number }>;
+    const userRow = db.prepare('SELECT progreso, calificacion FROM users WHERE id = ?').get(session.id) as { progreso: number; calificacion: number } | undefined;
 
     sendJson(res, 200, {
       items: rows.map((r) => {
@@ -552,7 +718,6 @@ const server = http.createServer((req, res) => {
   if (req.method === 'PUT' && req.url === '/api/progress/exercise') {
     const session = getSessionUser(req);
     if (!session) {
-      console.log('[progress] Rechazado: no hay sesión válida.');
       sendJson(res, 403, { message: 'No autorizado' });
       return;
     }
@@ -575,10 +740,9 @@ const server = http.createServer((req, res) => {
         `).run(session.id, exerciseId, correct ? 1 : 0, JSON.stringify(answerData || {}), isCompleted);
 
         const { progresoPct, calificacionPct } = recomputeUserProgress(session.id);
-        console.log(`[progress] usuario id=${session.id} ejercicio=${exerciseId} correcto=${!!correct} completado=${!!isCompleted} -> progreso=${progresoPct}, calificacion=${calificacionPct}`);
         sendJson(res, 200, { message: 'Progreso actualizado', progreso: progresoPct, calificacion: calificacionPct });
       } catch (err) {
-        console.log('[progress] Error al procesar body:', err.message);
+        console.error('[progress] Error al procesar body:', err instanceof Error ? err.message : 'Error desconocido');
         sendJson(res, 400, { message: 'Datos inválidos.' });
       }
     });
@@ -587,6 +751,9 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'POST' && (req.url === '/api/register' || req.url === '/api/login')) {
     readJson(req, res, ({ user, pass, rol }) => {
+      if (typeof user !== 'string' || typeof pass !== 'string') return sendJson(res, 400, { message: 'Faltan datos para acceder.' });
+      const ip = req.socket.remoteAddress || 'unknown';
+      if (req.url === '/api/login' && isLoginRateLimited(ip)) return sendJson(res, 429, { message: 'Demasiados intentos. Espera 15 minutos e inténtalo de nuevo.' });
       const validationError = req.url === '/api/login' ? assertValidLogin(user, pass) : assertValidCredentials(user, pass);
       if (validationError) return sendJson(res, 400, { message: validationError });
 
@@ -596,16 +763,20 @@ const server = http.createServer((req, res) => {
         if (requestedRole === 'admin' && (!requester || requester.rol !== 'admin')) return sendJson(res, 403, { message: 'No autorizado.' });
         const exists = db.prepare('SELECT 1 FROM users WHERE user = ?').get(user);
         if (exists) return sendJson(res, 409, { message: 'Ese usuario ya existe.' });
-        db.prepare('INSERT INTO users (user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?)')
-          .run(user, hashPassword(pass), 0, 0, requestedRole);
+        db.prepare('INSERT INTO users (codigo_usuario, user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(nextPublicUserId(), user, hashPassword(pass), 0, 0, requestedRole);
         return sendJson(res, 201, { message: 'Registro exitoso.' });
       }
 
-      const row = db.prepare('SELECT id, user, pass, progreso, calificacion, rol FROM users WHERE user = ?').get(user);
-      if (!row || !verifyPassword(pass, row.pass)) return sendJson(res, 401, { message: 'Usuario o contraseña incorrectos.' });
+      const row = db.prepare('SELECT id, codigo_usuario AS codigoUsuario, user, pass, progreso, calificacion, rol FROM users WHERE user = ?').get(user) as UserRow | undefined;
+      if (!row || !verifyPassword(pass, row.pass)) {
+        recordFailedLogin(ip);
+        return sendJson(res, 401, { message: 'Usuario o contraseña incorrectos.' });
+      }
+      loginAttempts.delete(ip);
       if (!isPasswordHash(row.pass)) db.prepare('UPDATE users SET pass = ? WHERE id = ?').run(hashPassword(pass), row.id);
       setSession(res, row.id);
-      sendJson(res, 200, { id: row.id, user: row.user, role: row.rol, progreso: row.progreso, calificacion: row.calificacion });
+      sendJson(res, 200, { id: row.id, codigoUsuario: row.codigoUsuario, user: row.user, role: row.rol, progreso: row.progreso, calificacion: row.calificacion });
     });
     return;
   }
@@ -613,49 +784,6 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/logout') {
     clearSession(req, res);
     sendJson(res, 200, { message: 'Sesión cerrada.' });
-    return;
-  }
-
-  if (false && req.method === 'POST' && (req.url === '/api/register' || req.url === '/api/login')) {
-    let body = '';
-    req.on('data', (chunk) => { body += chunk; });
-    req.on('end', () => {
-      try {
-        const { user, pass } = JSON.parse(body || '{}');
-        if (!user || !pass) {
-          sendJson(res, 400, { message: 'Faltan datos.' });
-          return;
-        }
-
-        if (req.url === '/api/register') {
-          const exists = db.prepare('SELECT 1 FROM users WHERE user = ?').get(user);
-          if (exists) {
-            sendJson(res, 409, { message: 'Ese usuario ya existe.' });
-            return;
-          }
-          db.prepare('INSERT INTO users (user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?)')
-            .run(user, pass, 0, 0, 'usuario');
-          sendJson(res, 201, { message: 'Registrada con éxito' });
-          return;
-        }
-
-        const row = db.prepare('SELECT id, user, pass, progreso, calificacion, rol FROM users WHERE user = ? AND pass = ?').get(user, pass);
-        if (!row) {
-          sendJson(res, 401, { message: 'Usuario o contraseña incorrectos.' });
-          return;
-        }
-
-        sendJson(res, 200, {
-          id: row.id,
-          user: row.user,
-          role: row.rol,
-          progreso: row.progreso,
-          calificacion: row.calificacion
-        });
-      } catch {
-        sendJson(res, 400, { message: 'Datos inválidos.' });
-      }
-    });
     return;
   }
 
@@ -667,17 +795,37 @@ const server = http.createServer((req, res) => {
     return;
   }
   const filePath = path.resolve(root, `.${requestedPath}`);
+  const publicDir = path.join(root, 'public', 'static');
+  const uploadsDirPath = path.resolve(uploadsDir);
+  const relativeTo = (directory: string): string => path.relative(directory, filePath);
+  const isWithin = (directory: string): boolean => {
+    const relative = relativeTo(directory);
+    return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+  };
+  const isPublicFile = filePath === path.join(root, 'index.html')
+    || filePath === path.join(root, 'dist', 'client.js')
+    || filePath === path.join(root, 'docs', 'manual.html')
+    || isWithin(publicDir)
+    || isWithin(uploadsDirPath);
 
-  if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
-    res.writeHead(403);
-    res.end('Forbidden');
+  if (req.method !== 'GET' || !isPublicFile) {
+    const extension = path.extname(requestedPath);
+    if (req.method === 'GET' && (!extension || extension === '.html')) sendErrorPage(res, 404);
+    else {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end('Not found');
+    }
     return;
   }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      res.writeHead(404);
-      res.end('Not found');
+      const extension = path.extname(filePath);
+      if (!extension || extension === '.html') sendErrorPage(res, 404);
+      else {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end('Not found');
+      }
       return;
     }
 
@@ -687,8 +835,31 @@ const server = http.createServer((req, res) => {
     });
     res.end(data);
   });
-});
+}
 
 server.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT} — build: ${SERVER_BUILD}`);
+  console.info(`Servidor corriendo en el puerto ${PORT} — build: ${SERVER_BUILD}`);
 });
+
+let shutdownStarted = false;
+function shutdown(signal: NodeJS.Signals): void {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  console.info(`Cerrando servidor por ${signal}.`);
+  const timeout = setTimeout(() => {
+    console.error('Se agotó el tiempo para cerrar el servidor de forma ordenada.');
+    process.exit(1);
+  }, 10_000);
+  timeout.unref();
+  server.close((error) => {
+    clearTimeout(timeout);
+    if (error) {
+      console.error('No se pudo cerrar el servidor limpiamente.');
+      process.exitCode = 1;
+    }
+    db.close();
+  });
+}
+
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

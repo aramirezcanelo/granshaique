@@ -1,4 +1,4 @@
-import { showToast, showConfirm, showPrompt, SEPARATOR_TYPE, generateWordSearchGrid } from '../main.js';
+import { showToast, showConfirm, showPrompt, SEPARATOR_TYPE, generateWordSearchGrid } from '../shared/ui';
 
 const GRADABLE_TYPES = [
   'Quizz conTexto',
@@ -69,6 +69,7 @@ let exerciseBank = [];
 let allUsers = [];
 let selectedTypeForForm = null;
 let orderModeActive = false;
+let selectedExerciseIds = new Set();
 
 async function fetchExercisesFromServer() {
   try {
@@ -113,6 +114,26 @@ async function deleteExerciseOnServer(id) {
     return true;
   } catch {
     showToast('No se pudo conectar con el servidor para eliminar el ejercicio.', 'error');
+    return false;
+  }
+}
+
+async function deleteSelectedExercisesOnServer(ids) {
+  try {
+    const response = await fetch('/api/exercises', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      showToast(data.message || 'No se pudieron eliminar los ejercicios seleccionados.', 'error');
+      return false;
+    }
+    showToast(`Se eliminaron ${data.deletedCount} ejercicios.`, 'success');
+    return true;
+  } catch {
+    showToast('No se pudo conectar con el servidor para eliminar los ejercicios.', 'error');
     return false;
   }
 }
@@ -689,7 +710,24 @@ function renderCoursePanel() {
   });
 }
 
+function updateBulkDeleteControls() {
+  const selectable = exerciseBank.filter((exercise) => exercise.type !== SEPARATOR_TYPE);
+  const selectedCount = selectable.filter((exercise) => selectedExerciseIds.has(exercise.id)).length;
+  const countLabel = document.getElementById('selectedExerciseCount');
+  const deleteButton = document.getElementById('deleteSelectedExercisesBtn');
+  const selectAllButton = document.getElementById('selectAllExercisesBtn');
+  if (countLabel) countLabel.textContent = String(selectedCount);
+  if (deleteButton) deleteButton.disabled = selectedCount === 0;
+  if (selectAllButton) {
+    selectAllButton.textContent = selectable.length > 0 && selectable.every((exercise) => selectedExerciseIds.has(exercise.id))
+      ? 'Quitar selección'
+      : 'Seleccionar todos';
+  }
+}
+
 function renderOrderPanel() {
+  const availableIds = new Set(exerciseBank.filter((exercise) => exercise.type !== SEPARATOR_TYPE).map((exercise) => exercise.id));
+  selectedExerciseIds.forEach((id) => { if (!availableIds.has(id)) selectedExerciseIds.delete(id); });
   const panel = document.getElementById('panelContent');
 
   const rows = exerciseBank.map((ex, i) => {
@@ -699,6 +737,7 @@ function renderOrderPanel() {
       <span class="drag-handle" title="Mantén presionado y arrastra para reordenar">
         <span></span><span></span><span></span><span></span><span></span><span></span>
       </span>
+      ${isSeparator ? '<span class="order-select-spacer" aria-hidden="true"></span>' : `<input class="order-select" type="checkbox" data-id="${ex.id}" aria-label="Seleccionar ${ex.title}" ${selectedExerciseIds.has(ex.id) ? 'checked' : ''}>`}
       <span class="order-type-badge">${isSeparator ? '— Separador —' : ex.type}</span>
       <span class="order-title">${ex.title}</span>
       <div class="arrow-btn-group">
@@ -714,6 +753,8 @@ function renderOrderPanel() {
     <div class="panel-toolbar">
       <button id="backToGridBtn" class="btn ghost" type="button">← Volver a tipos de ejercicio</button>
       <button id="addSeparatorBtn" class="btn primary" type="button">+ Agregar separador</button>
+      <button id="selectAllExercisesBtn" class="btn ghost" type="button">Seleccionar todos</button>
+      <button id="deleteSelectedExercisesBtn" class="btn danger" type="button" disabled>Eliminar seleccionados (<span id="selectedExerciseCount">0</span>)</button>
     </div>
     <h3 class="panel-section-title">Orden de los ejercicios</h3>
     <p class="list-hint">Arrastra ⋮⋮ para reordenar, o usa las flechas. Los separadores dividen el curso en secciones. Así lo verá el alumno; los cambios se guardan al instante.</p>
@@ -744,6 +785,46 @@ function renderOrderPanel() {
     await persistExercise(newSeparator);
     window.dispatchEvent(new CustomEvent('exerciseUpdated', { detail: exerciseBank }));
   });
+
+  panel.querySelectorAll('.order-select').forEach((checkbox) => {
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedExerciseIds.add(checkbox.dataset.id);
+      else selectedExerciseIds.delete(checkbox.dataset.id);
+      updateBulkDeleteControls();
+    });
+  });
+
+  document.getElementById('selectAllExercisesBtn').addEventListener('click', () => {
+    const selectable = exerciseBank.filter((exercise) => exercise.type !== SEPARATOR_TYPE);
+    const allSelected = selectable.length > 0 && selectable.every((exercise) => selectedExerciseIds.has(exercise.id));
+    selectable.forEach((exercise) => {
+      if (allSelected) selectedExerciseIds.delete(exercise.id);
+      else selectedExerciseIds.add(exercise.id);
+    });
+    renderOrderPanel();
+  });
+
+  document.getElementById('deleteSelectedExercisesBtn').addEventListener('click', async () => {
+    const selected = exerciseBank.filter((exercise) => exercise.type !== SEPARATOR_TYPE && selectedExerciseIds.has(exercise.id));
+    if (!selected.length) return;
+
+    const confirmed = await showConfirm(
+      `¿Eliminar ${selected.length} ejercicios seleccionados? Esta acción no se puede deshacer.`,
+      { confirmText: `Eliminar ${selected.length}`, cancelText: 'Cancelar' }
+    );
+    if (!confirmed) return;
+
+    const ids = selected.map((exercise) => exercise.id);
+    const savedIds = selected.filter((exercise) => exercise.isNew !== true).map((exercise) => exercise.id);
+    if (savedIds.length > 0 && !await deleteSelectedExercisesOnServer(savedIds)) return;
+    if (savedIds.length === 0) showToast(`Se eliminaron ${ids.length} ejercicios.`, 'success');
+    exerciseBank = exerciseBank.filter((exercise) => !ids.includes(exercise.id));
+    ids.forEach((id) => selectedExerciseIds.delete(id));
+    renderOrderPanel();
+    window.dispatchEvent(new CustomEvent('exerciseUpdated', { detail: exerciseBank }));
+  });
+
+  updateBulkDeleteControls();
 
   const persistOrder = async () => {
     const order = exerciseBank.map((ex) => ex.id);
@@ -860,6 +941,7 @@ function renderOrderPanel() {
 
       const exId = item.id;
       exerciseBank.splice(i, 1);
+      selectedExerciseIds.delete(exId);
       renderOrderPanel();
       await deleteExerciseOnServer(exId);
       window.dispatchEvent(new CustomEvent('exerciseUpdated', { detail: exerciseBank }));
@@ -892,7 +974,7 @@ function renderUserRows(users) {
           <option value="usuario" ${user.rol === 'usuario' ? 'selected' : ''}>usuario</option>
         </select>
       </td>
-      <td><input type="number" value="${user.id}" data-field="id" readonly></td>
+      <td><code class="user-public-id">${user.codigoUsuario || 'Asignando…'}</code></td>
       <td>
         <div class="action-buttons">
           <button type="button" class="btn primary save-user">Guardar</button>
@@ -906,7 +988,7 @@ function renderUserRows(users) {
     btn.addEventListener('click', async () => {
       const row = btn.closest('tr');
       const payload = {
-        id: Number(row.querySelector('[data-field="id"]').value || 0),
+        id: Number(row.dataset.id || 0),
         user: row.querySelector('[data-field="user"]').value,
         pass: row.querySelector('[data-field="pass"]').value,
         rol: row.querySelector('[data-field="rol"]').value,
@@ -930,8 +1012,9 @@ function renderUserRows(users) {
   tbody.querySelectorAll('.delete-user').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const row = btn.closest('tr');
-      const id = Number(row.querySelector('[data-field="id"]').value);
-      const confirmed = await showConfirm(`¿Eliminar al usuario número ${id}? Esta acción no se puede deshacer.`, {
+      const id = Number(row.dataset.id);
+      const publicId = row.querySelector('.user-public-id').textContent;
+      const confirmed = await showConfirm(`¿Eliminar al usuario ${publicId}? Esta acción no se puede deshacer.`, {
         confirmText: 'Eliminar',
         cancelText: 'Cancelar'
       });
@@ -976,7 +1059,7 @@ function loadUsers() {
       allUsers = users;
       panel.innerHTML = `
         <div class="user-controls">
-          <input type="number" id="searchUserId" placeholder="Buscar por número..." class="search-input" />
+          <input type="text" id="searchUserId" placeholder="Buscar por ID o usuario..." class="search-input" />
           <button id="showAddUserBtn" type="button" class="btn primary">+ Usuario</button>
         </div>
 
@@ -1002,7 +1085,7 @@ function loadUsers() {
                 <th>Progreso <span class="th-auto">(automático)</span></th>
                 <th>Calificación (/100) <span class="th-auto">(automático)</span></th>
                 <th>Rol</th>
-                <th>Número</th>
+                <th>ID de usuario</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -1018,7 +1101,11 @@ function loadUsers() {
         if (!query) {
           renderUserRows(allUsers);
         } else {
-          const filtered = allUsers.filter((u) => String(u.id).includes(query));
+          const normalizedQuery = query.toLowerCase();
+          const filtered = allUsers.filter((u) =>
+            String(u.codigoUsuario || '').toLowerCase().includes(normalizedQuery)
+            || String(u.user || '').toLowerCase().includes(normalizedQuery)
+          );
           renderUserRows(filtered);
         }
       });

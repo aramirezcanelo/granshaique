@@ -1,11 +1,20 @@
 {
   "name": "gran-chaique",
   "version": "1.0.0",
-  "main": "server/server.js",
+  "main": "dist/server/server.js",
   "type": "module",
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.8.3"
+  },
   "scripts": {
-    "start": "node server/server.js",
-    "check": "node --check server/server.js && node --check public/main.js && node --check public/views/authView.js && node --check public/views/courseView.js && node --check public/views/dashboardView.js"
+    "build": "npm run typecheck && npm run build:client && npm run build:server",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.server.json --noEmit",
+    "build:client": "esbuild public/main.ts --bundle --minify --legal-comments=none --format=iife --target=es2020 --outfile=dist/client.js",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "npm run build:server && node --env-file-if-exists=.env dist/server/server.js",
+    "check": "npm run build"
   },
   "engines": {
     "node": "22.22.0"

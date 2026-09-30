@@ -1,3 +1,5 @@
+import { openUserManual } from '../shared/manual';
+
 export function authView() {
   document.body.innerHTML = `
     <div class="app-shell">
@@ -9,15 +11,15 @@ export function authView() {
         <div class="auth-card">
           <p class="eyebrow">Bienvenido</p>
           <h2>Accede</h2>
-          <form id="authForm" class="auth-form">
+          <form id="authForm" class="auth-form" action="/api/login" method="post" autocomplete="on">
             <label class="field">
               <span>Usuario</span>
-              <input name="user" type="text" placeholder="Tu usuario" required />
+              <input id="authUser" name="username" type="text" placeholder="Tu usuario" autocomplete="username" autocapitalize="none" spellcheck="false" required />
             </label>
             <label class="field">
               <span>Contraseña</span>
               <div class="password-field-wrap">
-                <input name="pass" type="password" placeholder="••••••••" required />
+                <input id="authPassword" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
                 <button type="button" class="toggle-pass-icon" id="togglePassBtn" aria-label="Mostrar contraseña" title="Mostrar contraseña">
                   <svg class="eye-icon eye-open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
@@ -34,6 +36,7 @@ export function authView() {
             <button class="btn primary" type="submit">Accede</button>
             <button class="btn ghost" type="button" id="registerBtn">¡Registrala!</button>
           </form>
+          <button class="btn ghost manual-link" type="button" id="manualBtn">Manual de uso</button>
         </div>
       </section>
     </div>
@@ -43,7 +46,11 @@ export function authView() {
   const registerBtn = document.getElementById('registerBtn');
   const messageBox = document.getElementById('authMessage');
   const togglePassBtn = document.getElementById('togglePassBtn');
-  const passInput = form.pass;
+  const userInput = document.getElementById('authUser');
+  const passInput = document.getElementById('authPassword');
+  const manualBtn = document.getElementById('manualBtn');
+
+  manualBtn.addEventListener('click', openUserManual);
 
   togglePassBtn.addEventListener('click', () => {
     const showing = passInput.type === 'text';
@@ -59,32 +66,51 @@ export function authView() {
   };
 
   const submit = async (mode) => {
-    const user = form.user.value.trim();
-    const pass = form.pass.value.trim();
+    if (location.protocol === 'file:') {
+      showMessage('Abre el servidor en http://localhost:8080 para iniciar sesión. El index abierto con doble clic es solo una vista previa.', false);
+      return;
+    }
+
+    const user = userInput.value.trim();
+    const pass = passInput.value;
     if (!user || !pass) {
       showMessage('Completa usuario y contraseña.', false);
       return;
     }
 
-    const res = await fetch(`/api/${mode}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user, pass })
-    });
+    try {
+      const res = await fetch(`/api/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ user, pass })
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      showMessage(data.message || 'Error.', false);
-      return;
+      const data = await res.json();
+      if (!res.ok) {
+        showMessage(data.message || 'Error.', false);
+        return;
+      }
+
+      if (mode === 'register') {
+        showMessage('Registrada con éxito', true);
+        form.reset();
+        passInput.autocomplete = 'current-password';
+        return;
+      }
+
+      const PasswordCredentialConstructor = window['PasswordCredential'];
+      if (PasswordCredentialConstructor && navigator.credentials?.store) {
+        try {
+          await navigator.credentials.store(new PasswordCredentialConstructor(form));
+        } catch {
+          // El navegador puede no implementar el guardado de credenciales; autocomplete sigue habilitado.
+        }
+      }
+      location.reload();
+    } catch {
+      showMessage('No se pudo conectar con el servidor. Inícialo con "npm start" y abre http://localhost:8080.', false);
     }
-
-    if (mode === 'register') {
-      showMessage('Registrada con éxito', true);
-      form.reset();
-      return;
-    }
-
-    location.reload();
   };
 
   form.addEventListener('submit', (e) => {
@@ -94,6 +120,7 @@ export function authView() {
 
   registerBtn.addEventListener('click', (e) => {
     e.preventDefault();
+    passInput.autocomplete = 'new-password';
     submit('register');
   });
 }

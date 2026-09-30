@@ -1,46 +1,94 @@
 # Gran Chaique
 
-Aplicación web de aprendizaje con ejercicios, seguimiento de progreso y administración de usuarios.
+Aplicación de aprendizaje con ejercicios interactivos, seguimiento de progreso y administración de usuarios. El código de la aplicación y del servidor está escrito en TypeScript; el navegador recibe un paquete local generado durante la compilación.
 
-## Requisitos
+## Estructura
 
-- Node.js 22.22.0 (usa SQLite integrado de Node; la versión queda fijada para Render).
-- Un proxy HTTPS en producción, por ejemplo Nginx, Caddy o la plataforma de despliegue.
+```text
+public/                 Cliente TypeScript y recursos estáticos
+  views/                Vistas de la aplicación en TypeScript
+  shared/               Componentes e interacciones reutilizables
+server/                 Servidor HTTP y SQLite en TypeScript
+docs/manual.html        Manual visual, imprimible y sin dependencias externas
+tsconfig.server.json    Configuración de compilación del servidor
+package.json            Scripts y dependencias de compilación
+package-lock.json       Versiones exactas para instalaciones reproducibles
+uploads/                Archivos cargados por usuarios
+dist/                   Salida generada; no se edita a mano ni se sube a Git
+index.html              Entrada local, abre con doble clic
+```
 
-## Arranque local
+## Vista local con doble clic
 
-1. Copia `.env.example` como `.env` y define una contraseña de administrador larga.
-2. Ejecuta `npm run check`.
-3. Ejecuta `npm start` y abre `http://localhost:8080`.
+`index.html` abre la interfaz de acceso sin instalar un servidor. Esta vista es una previsualización: el navegador no puede ejecutar la API ni SQLite desde un archivo local. Para iniciar sesión, registrar usuarios, guardar el progreso, subir archivos y administrar ejercicios, inicia el servidor siguiendo el apartado siguiente.
 
-En un entorno que ya tenga un administrador, las variables `ADMIN_USER` y `ADMIN_PASSWORD` no son necesarias. En una base nueva de producción sí lo son; el servidor se detiene si no se proporcionan.
+## Desarrollo y servidor
 
-## Despliegue de producción
+- Node.js 22.22.0
+- npm
 
-1. Configura `NODE_ENV=production`, `PORT`, `ADMIN_USER` y `ADMIN_PASSWORD` como secretos de la plataforma; no subas `.env` a Git.
-2. Usa almacenamiento persistente para `server/data/app.sqlite` y `uploads/`.
-3. Publica la aplicación únicamente detrás de HTTPS. Las cookies de sesión se marcan como `Secure` en producción, por lo que no funcionarán mediante HTTP.
-4. Ejecuta `npm run check` antes de cada despliegue y configura el comando de inicio como `npm start`.
-5. Programa copias de seguridad cifradas de la base SQLite y de `uploads/`. Comprueba una restauración antes del lanzamiento.
+```sh
+npm install
+npm run build
+npm start
+```
 
-## Render
+Abre `http://localhost:8080`. `npm start` compila el servidor TypeScript antes de iniciarlo. `npm run build` genera el cliente y servidor en `dist/`; los paquetes de compilación quedan instalados localmente en `node_modules` y no se usan desde CDN.
 
-El repositorio incluye `render.yaml`. Crea el servicio desde ese Blueprint y completa `ADMIN_USER` y `ADMIN_PASSWORD` como secretos en el panel. El servicio usa el plan Starter porque SQLite y los archivos cargados requieren el disco persistente de `/var/data`; no uses un plan sin disco para producción. Mantén una sola instancia: SQLite local y las sesiones en memoria no se comparten entre instancias.
+Después de clonar o cambiar dependencias, conserva y actualiza `package-lock.json` con `npm install`; en automatización usa `npm ci` para instalar exactamente esas versiones.
 
-Render asigna `PORT` y termina TLS; el endpoint de salud es `/healthz`. Tras el primer despliegue, comprueba ese endpoint, crea un usuario de prueba, carga un archivo y verifica que ambos sigan disponibles después de un redeploy.
+En una instalación nueva, configura `ADMIN_USER` y `ADMIN_PASSWORD` mediante el entorno. No guardes secretos en Git. En producción configura `NODE_ENV=production`, almacenamiento persistente para `server/data/app.sqlite` y `uploads/`, y sirve el sitio detrás de HTTPS.
 
-## Seguridad incluida
+Para desarrollo local, `npm start` lee `.env` si existe. Si la base no tiene ningún admin, crea automáticamente el usuario indicado por `ADMIN_USER`; cuando no se indica, usa `Ako` fuera de producción. Configura `ADMIN_PASSWORD` con una contraseña de al menos 10 caracteres en `.env`. En producción se exigen ambos valores desde el administrador de secretos de la plataforma.
 
-- Contraseñas con `scrypt`; las contraseñas heredadas se convierten al iniciar sesión correctamente.
-- Sesiones opacas, `HttpOnly`, `SameSite=Strict` y `Secure` en producción.
-- Cuenta administradora inicial creada solo con variables de entorno, sin contraseña fija en el código.
-- Encabezados de seguridad, restricción de origen en peticiones de escritura y protección contra recorridos de ruta.
-- Límite para solicitudes JSON declaradas y archivos cargados de hasta 15 MB.
+Cada cuenta recibe un identificador público diario compacto en formato `AAMMDDNN`, por ejemplo `26092901`. El contador se guarda por fecha y continúa aunque se eliminen cuentas. Los IDs antiguos con barras se convierten al nuevo formato al iniciar el servidor; la clave primaria interna sigue oculta y mantiene los vínculos existentes.
 
-## Operación
+Abre el botón **Manual de uso** en el acceso o **Manual** en la barra superior para consultar la guía dentro de la aplicación. También puedes abrir [docs/manual.html](docs/manual.html) directamente e imprimir o guardar como PDF desde el navegador.
 
-No es posible consultar contraseñas desde el dashboard. Para cambiar una contraseña, escribe una nueva en su campo; dejarlo vacío conserva la actual. La API permite el registro público de usuarios normales; solo un administrador autenticado puede crear cuentas administradoras.
+## Despliegue
 
-`server/data/app.sqlite` y el contenido de `uploads/` se ignoran en Git intencionadamente. Si ya se habían añadido a Git, retíralos del índice solo después de verificar el respaldo: `git rm --cached server/data/app.sqlite`.
+El proyecto incluye `render.yaml` para Render. La compilación usa `npm ci --include=dev` y `npm run build`; el inicio ejecuta el JavaScript de `dist/`. El servicio define `NODE_ENV=production`, zona horaria de Ciudad de México, usa `/healthz` como health check y guarda SQLite y archivos cargados en el disco persistente.
 
-Consulta [ISO_READINESS.md](ISO_READINESS.md) para el alcance, evidencia y pendientes de conformidad.
+Antes del primer deploy, conecta el repositorio a Render, configura `ADMIN_USER` y `ADMIN_PASSWORD` como secretos (contraseña de al menos 10 caracteres), conserva el disco en `/var/data` y usa una sola instancia porque las sesiones actuales viven en memoria. Render termina HTTPS delante de la app; `Secure` en cookies y HSTS se activan con `NODE_ENV=production`. Tras el primer deploy, confirma que `/healthz` responda y que el acceso admin funcione. Configura backups externos del disco antes de usar datos reales.
+
+### Pasar este código a un repositorio existente
+
+Esta carpeta descargada no tiene `.git` ni un remoto configurado. Para conservar el historial del repositorio original y evitar reemplazar archivos remotos, clónalo en una carpeta nueva y copia ahí el código. En PowerShell, ejecuta esto desde esta carpeta:
+
+```powershell
+$sourcePath = (Get-Location).Path
+$repoUrl = Read-Host "URL HTTPS o SSH del repositorio existente"
+$repoPath = "C:\Users\Alex\Documents\web-projects\granshaique-publish"
+if (Test-Path $repoPath) { throw "La carpeta destino ya existe. Cambia `$repoPath a una carpeta nueva y vacía." }
+git clone $repoUrl $repoPath
+if ($LASTEXITCODE -ne 0) { throw "No se pudo clonar el repositorio." }
+Set-Location $repoPath
+git switch -c feat/typescript-mobile-manual
+robocopy $sourcePath $repoPath /E /XD ".git" "node_modules" "dist" "uploads" "$sourcePath\server\data" /XF ".env"
+if ($LASTEXITCODE -ge 8) { throw "Robocopy encontró un error; revisa su salida antes de continuar." }
+npm ci
+npm run build
+git status --short
+git ls-files -- .env
+```
+
+La copia excluye la contraseña local, dependencias compiladas, base SQLite y cargas; no uses `/MIR` ni `git push --force`. Si `git ls-files -- .env` devuelve `.env`, quítalo del seguimiento con `git rm --cached -- .env` y rota cualquier secreto que haya estado publicado. Revisa los cambios con `git diff --check` y `git diff --stat`, luego:
+
+```powershell
+git add -A
+git diff --cached --check
+git diff --cached --stat
+git diff --cached
+git commit -m "feat: improve mobile experience and deployment setup"
+git push -u origin feat/typescript-mobile-manual
+```
+
+Revisa el diff preparado para confirmar que no incluya `.env`, datos personales, SQLite ni archivos privados. Después abre un pull request desde `feat/typescript-mobile-manual` a la rama principal y fusiónalo según las reglas del repositorio.
+
+### Actualizar el servicio existente en Render
+
+En Render, abre el servicio actual y revisa **Settings → Build & Deploy**: la rama de despliegue debe ser la principal y los comandos deben coincidir con `render.yaml` (`npm ci --include=dev && npm run build` y `node --env-file-if-exists=.env dist/server/server.js`). En **Environment** conserva los secretos `ADMIN_USER` y `ADMIN_PASSWORD`, y verifica `NODE_ENV=production`, `APP_TIME_ZONE=America/Mexico_City`, `DATA_DIR=/var/data` y `UPLOADS_DIR=/var/data/uploads`. En **Disks**, conserva el disco persistente montado en `/var/data`.
+
+Si el auto-deploy está activado para la rama principal, Render iniciará el despliegue al fusionar el pull request. Si está desactivado, selecciona **Manual Deploy → Deploy latest commit** después de la fusión. Confirma en **Events/Logs** que el build y el arranque terminen correctamente; luego abre la URL del servicio y verifica `/healthz` y el acceso.
+
+Consulta [ISO_READINESS.md](ISO_READINESS.md) para el alcance y las tareas operativas pendientes.

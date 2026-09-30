@@ -1,0 +1,17 @@
+:root { color-scheme: light; font-family: Inter, "Segoe UI", system-ui, sans-serif; color: #3b2334; background: #fff7fb; }
+* { box-sizing: border-box; }
+body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 15% 10%, #ffe0ef 0, transparent 32%), radial-gradient(circle at 90% 90%, #e8ddff 0, transparent 34%), #fffafd; }
+.error-card { width: min(100%, 680px); padding: clamp(30px, 7vw, 64px); border: 1px solid #f2dce8; border-radius: 28px; background: #ffffffeb; box-shadow: 0 28px 90px #64335118; text-align: center; }
+.error-brand { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 34px; font-size: 13px; font-weight: 850; letter-spacing: .12em; }
+.error-mark { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 12px; background: linear-gradient(135deg, #e64e9a, #fa9dc8); color: white; font-size: 18px; box-shadow: 0 8px 20px #e64e9a45; }
+.error-code { margin: 0; color: #dc4d95; font-size: clamp(64px, 15vw, 112px); font-weight: 850; letter-spacing: -.08em; line-height: .95; }
+h1 { margin: 22px 0 10px; font-size: clamp(25px, 5vw, 36px); letter-spacing: -.04em; }
+.error-copy { max-width: 450px; margin: 0 auto; color: #806879; line-height: 1.7; }
+.error-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+.error-button { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; padding: 0 19px; border: 1px solid #efd8e4; border-radius: 13px; background: #fff5fa; color: #54243e; font: inherit; font-size: 14px; font-weight: 750; text-decoration: none; cursor: pointer; }
+.error-button.primary { border-color: transparent; background: linear-gradient(135deg, #e64e9a, #f38abb); color: white; box-shadow: 0 9px 20px #e64e9a35; }
+.error-button:hover { transform: translateY(-1px); }
+.error-hint { margin-top: 28px; color: #a18494; font-size: 12px; }
+.error-symbol { margin: 0 auto 18px; display: grid; width: 64px; height: 64px; place-items: center; border: 1px solid #f2dce8; border-radius: 21px; background: #fff1f7; color: #dd4d94; font-size: 27px; }
+.error-button:focus-visible { outline: 3px solid #b862ee; outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) { .error-card { animation: arrive .45s ease-out both; } @keyframes arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } } }

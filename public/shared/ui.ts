@@ -1,6 +1,3 @@
-import { authView } from './views/authView.js';
-import { courseView } from './views/courseView.js';
-
 function ensureToastContainer() {
   let container = document.getElementById('toastContainer');
   if (!container) {
@@ -12,13 +9,17 @@ function ensureToastContainer() {
   return container;
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+}
+
 export function showToast(message, type = 'info', duration = 4200) {
   const container = ensureToastContainer();
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
   toast.innerHTML = `
     <span class="toast-icon">${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ'}</span>
-    <span class="toast-message">${message}</span>
+    <span class="toast-message">${escapeHtml(message)}</span>
     <button type="button" class="toast-close" aria-label="Cerrar">✕</button>
   `;
   container.appendChild(toast);
@@ -43,7 +44,7 @@ export function showConfirm(message, { confirmText = 'Confirmar', cancelText = '
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
       <div class="confirm-modal">
-        <p class="confirm-message">${message}</p>
+        <p class="confirm-message">${escapeHtml(message)}</p>
         <div class="confirm-actions">
           <button type="button" class="btn ghost confirm-cancel">${cancelText}</button>
           <button type="button" class="btn ${danger ? 'danger' : 'primary'} confirm-ok">${confirmText}</button>
@@ -76,8 +77,8 @@ export function showPrompt(message, defaultValue = '') {
     overlay.className = 'confirm-overlay';
     overlay.innerHTML = `
       <div class="confirm-modal">
-        <p class="confirm-message">${message}</p>
-        <input type="text" class="prompt-input" value="${defaultValue}" />
+        <p class="confirm-message">${escapeHtml(message)}</p>
+        <input type="text" class="prompt-input" value="${escapeHtml(defaultValue)}" />
         <div class="confirm-actions">
           <button type="button" class="btn ghost confirm-cancel">Cancelar</button>
           <button type="button" class="btn primary confirm-ok">Aceptar</button>
@@ -216,15 +217,3 @@ export function generateWordSearchGrid(words, size = 12) {
 
   return grid.map((row) => row.join('')).join('');
 }
-
-async function startApp() {
-  try {
-    const response = await fetch('/api/me', { credentials: 'same-origin' });
-    if (response.ok) return courseView(await response.json());
-  } catch {
-    showToast('No se pudo verificar la sesión.', 'error');
-  }
-  authView();
-}
-
-startApp();

@@ -1,5 +1,6 @@
-import { dashboardView } from './dashboardView.js';
-import { showToast, showSupportModal, SEPARATOR_TYPE, generateWordSearchGrid } from '../main.js';
+import { dashboardView } from './dashboardView';
+import { showToast, showSupportModal, SEPARATOR_TYPE, generateWordSearchGrid } from '../shared/ui';
+import { openUserManual } from '../shared/manual';
 
 function getYouTubeEmbedUrl(url) {
   if (!url) return '';
@@ -267,8 +268,8 @@ function renderExerciseCard(ex) {
       <p class="exercise-instruction">Palabras: <strong data-role="pending-words">${words.join(', ') || 'N/A'}</strong></p>
       <p class="exercise-instruction">Encontradas: <span data-role="found-count">0</span>/${words.length} — Intentos fallidos permitidos: <strong data-role="attempts-left">${maxAttempts}</strong> — Tiempo: <strong data-role="time-left">${formatTime(timeLimitMinutes * 60)}</strong></p>
       <div class="timed-exercise-wrapper" data-role="timed-wrapper">
-        <div class="sopa-grid" data-role="sopa-grid" data-words="${words.join(',')}" data-max-attempts="${maxAttempts}" data-time-limit="${timeLimitMinutes * 60}">
-          ${gridLetters.slice(0, size * size).map((l, i) => `<div class="sopa-cell" data-cellindex="${i}">${l}</div>`).join('')}
+        <div class="sopa-grid" role="group" aria-label="Tablero de sopa de letras" data-role="sopa-grid" data-words="${words.join(',')}" data-max-attempts="${maxAttempts}" data-time-limit="${timeLimitMinutes * 60}">
+          ${gridLetters.slice(0, size * size).map((l, i) => `<button type="button" class="sopa-cell" data-cellindex="${i}" aria-label="Fila ${Math.floor(i / size) + 1}, columna ${i % size + 1}, letra ${l}" tabindex="${i === 0 ? '0' : '-1'}" disabled>${l}</button>`).join('')}
         </div>
         <div class="gform-feedback-slot"></div>
         <button type="button" class="btn-action-pink" data-action="check-word">Comprobar selección</button>
@@ -288,11 +289,11 @@ function renderExerciseCard(ex) {
       <div class="pairs-container" data-max-attempts="${maxAttempts}">
         <div>
           <h4>CONCEPTOS</h4>
-          ${items.map((item, i) => `<div class="pink-card-item" data-role="concepto" data-pairindex="${i}">${item.concepto}</div>`).join('')}
+          ${items.map((item, i) => `<button type="button" class="pink-card-item" data-role="concepto" data-pairindex="${i}">${item.concepto}</button>`).join('')}
         </div>
         <div>
           <h4>DEFINICIONES</h4>
-          ${shuffledDefs.map((d) => `<div class="pink-card-item" data-role="definicion" data-pairindex="${d.i}">${d.text}</div>`).join('')}
+          ${shuffledDefs.map((d) => `<button type="button" class="pink-card-item" data-role="definicion" data-pairindex="${d.i}">${d.text}</button>`).join('')}
         </div>
       </div>
       <div class="gform-feedback-slot"></div>
@@ -328,7 +329,7 @@ function renderExerciseCard(ex) {
       <p class="exercise-subtitle">${ex.prompt}</p>
       <div class="memorama-grid" data-role="memorama-grid" data-total-pairs="${conceptos.length}">
         ${deck.map((card) => `
-          <div class="memo-card" data-uid="${card.uid}" data-pairid="${card.pairId}" data-value="${card.value}">?</div>
+          <button type="button" class="memo-card" aria-label="Carta oculta" data-uid="${card.uid}" data-pairid="${card.pairId}" data-value="${card.value}" tabindex="${deck[0].uid === card.uid ? '0' : '-1'}">?</button>
         `).join('')}
       </div>
       <div class="gform-feedback-slot"></div>
@@ -437,7 +438,7 @@ function applyWordSearchAnswered(card, ex, answerData, correct) {
   const timeLeftEl = card.querySelector('[data-role="time-left"]');
   if (timeLeftEl) timeLeftEl.textContent = '—';
 
-  gridEl.querySelectorAll('.sopa-cell').forEach((c) => { c.style.pointerEvents = 'none'; });
+  gridEl.querySelectorAll('.sopa-cell').forEach((cell) => { cell.disabled = true; });
   const checkBtn = card.querySelector('[data-action="check-word"]');
   const clearBtn = card.querySelector('[data-action="clear-selection"]');
   if (checkBtn) checkBtn.disabled = true;
@@ -452,11 +453,13 @@ function applyPairsAnswered(card, ex, answerData, correct) {
   card.querySelectorAll('[data-role="concepto"]').forEach((el) => {
     const idx = Number(el.dataset.pairindex);
     if (matchedIndices.has(idx)) el.classList.add('matched');
+    el.disabled = true;
     el.style.pointerEvents = 'none';
   });
   card.querySelectorAll('[data-role="definicion"]').forEach((el) => {
     const idx = Number(el.dataset.pairindex);
     if (matchedIndices.has(idx)) el.classList.add('matched');
+    el.disabled = true;
     el.style.pointerEvents = 'none';
   });
   showFeedback(card, correct, null);
@@ -484,6 +487,8 @@ function applyMemoramaAnswered(card) {
   card.querySelectorAll('.memo-card').forEach((c) => {
     c.classList.add('matched');
     c.textContent = c.dataset.value;
+    c.disabled = true;
+    c.setAttribute('aria-label', `Pareja encontrada: ${c.dataset.value}`);
     c.style.pointerEvents = 'none';
   });
   showFeedback(card, true, null);
@@ -660,6 +665,7 @@ function wireWordSearch(card, ex, onDone) {
   let started = !!saved;
   let finished = false;
   let timerId = null;
+  cells.forEach((cell) => { cell.disabled = !started; });
 
   if (foundCountEl) foundCountEl.textContent = found.length;
   if (attemptsLeftEl) attemptsLeftEl.textContent = Math.max(attemptsLeft, 0);
@@ -677,7 +683,7 @@ function wireWordSearch(card, ex, onDone) {
     if (finished) return;
     finished = true;
     stopTimer();
-    cells.forEach((c) => { c.style.pointerEvents = 'none'; });
+    cells.forEach((cell) => { cell.disabled = true; });
     checkBtn.disabled = true;
     clearBtn.disabled = true;
     showFeedback(card, won, won ? null : words.join(', '));
@@ -708,6 +714,7 @@ function wireWordSearch(card, ex, onDone) {
     startBtn.addEventListener('click', () => {
       if (started) return;
       started = true;
+      cells.forEach((cell) => { cell.disabled = false; });
       startedAt = Date.now();
       persistProgress();
       beginPlay();
@@ -715,6 +722,21 @@ function wireWordSearch(card, ex, onDone) {
   }
 
   cells.forEach((cell) => {
+    cell.addEventListener('keydown', (event) => {
+      const currentIndex = Number(cell.dataset.cellindex);
+      const row = Math.floor(currentIndex / 12);
+      const column = currentIndex % 12;
+      const nextIndex = event.key === 'ArrowRight' && column < 11 ? currentIndex + 1
+        : event.key === 'ArrowLeft' && column > 0 ? currentIndex - 1
+          : event.key === 'ArrowDown' && row < 11 ? currentIndex + 12
+            : event.key === 'ArrowUp' && row > 0 ? currentIndex - 12
+              : -1;
+      if (nextIndex < 0 || !cells[nextIndex] || cells[nextIndex].disabled) return;
+      event.preventDefault();
+      cell.tabIndex = -1;
+      cells[nextIndex].tabIndex = 0;
+      cells[nextIndex].focus();
+    });
     cell.addEventListener('click', () => {
       if (!started || finished) return;
       const i = Number(cell.dataset.cellindex);
@@ -776,14 +798,14 @@ function wirePairs(card, ex, onDone) {
   const finish = (won) => {
     if (finished) return;
     finished = true;
-    card.querySelectorAll('.pink-card-item').forEach((el) => { el.style.pointerEvents = 'none'; });
+    card.querySelectorAll('.pink-card-item').forEach((el) => { el.disabled = true; });
     showFeedback(card, won, null);
     onDone(won, { matchedIndices: [...matched] });
   };
 
   card.querySelectorAll('[data-role="concepto"]').forEach((el) => {
     el.addEventListener('click', () => {
-      if (finished || el.classList.contains('matched')) return;
+      if (finished || el.disabled || el.classList.contains('matched')) return;
       card.querySelectorAll('[data-role="concepto"]').forEach((c) => c.classList.remove('selected'));
       el.classList.add('selected');
       selectedConcepto = el;
@@ -792,7 +814,7 @@ function wirePairs(card, ex, onDone) {
 
   card.querySelectorAll('[data-role="definicion"]').forEach((el) => {
     el.addEventListener('click', () => {
-      if (finished || el.classList.contains('matched') || !selectedConcepto) return;
+      if (finished || el.disabled || el.classList.contains('matched') || !selectedConcepto) return;
       const conceptoIndex = Number(selectedConcepto.dataset.pairindex);
       const defIndex = Number(el.dataset.pairindex);
 
@@ -800,6 +822,8 @@ function wirePairs(card, ex, onDone) {
         selectedConcepto.classList.remove('selected');
         selectedConcepto.classList.add('matched');
         el.classList.add('matched');
+        selectedConcepto.disabled = true;
+        el.disabled = true;
         matched.add(conceptoIndex);
         selectedConcepto = null;
         if (matched.size === items.length && items.length > 0) finish(true);
@@ -874,11 +898,26 @@ function wireMemorama(card, ex, onDone) {
   let matchedPairs = 0;
   let locked = false;
 
+  cards.forEach((c, index) => {
+    c.tabIndex = index === 0 ? 0 : -1;
+    c.addEventListener('keydown', (event) => {
+      const columns = Math.max(1, Math.round(gridEl.clientWidth / (c.getBoundingClientRect().width + 10)));
+      const nextByKey = { ArrowRight: index + 1, ArrowLeft: index - 1, ArrowDown: index + columns, ArrowUp: index - columns };
+      const nextIndex = nextByKey[event.key];
+      if (nextIndex === undefined || nextIndex < 0 || nextIndex >= cards.length) return;
+      event.preventDefault();
+      c.tabIndex = -1;
+      cards[nextIndex].tabIndex = 0;
+      cards[nextIndex].focus();
+    });
+  });
+
   cards.forEach((c) => {
     c.addEventListener('click', () => {
-      if (locked || c.classList.contains('flipped') || c.classList.contains('matched')) return;
+      if (locked || c.disabled || c.classList.contains('flipped') || c.classList.contains('matched')) return;
       c.classList.add('flipped');
       c.textContent = c.dataset.value;
+      c.setAttribute('aria-label', `Carta revelada: ${c.dataset.value}`);
       flipped.push(c);
 
       if (flipped.length === 2) {
@@ -887,6 +926,10 @@ function wireMemorama(card, ex, onDone) {
         if (a.dataset.pairid === b.dataset.pairid) {
           a.classList.add('matched');
           b.classList.add('matched');
+          a.disabled = true;
+          b.disabled = true;
+          a.setAttribute('aria-label', `Pareja encontrada: ${a.dataset.value}`);
+          b.setAttribute('aria-label', `Pareja encontrada: ${b.dataset.value}`);
           matchedPairs += 1;
           flipped = [];
           locked = false;
@@ -897,6 +940,8 @@ function wireMemorama(card, ex, onDone) {
             b.classList.remove('flipped');
             a.textContent = '?';
             b.textContent = '?';
+            a.setAttribute('aria-label', 'Carta oculta');
+            b.setAttribute('aria-label', 'Carta oculta');
             flipped = [];
             locked = false;
           }, 700);
@@ -937,21 +982,27 @@ export function courseView(session = {}) {
         <div class="topbar-user">
           <span class="topbar-pill">${session.user || 'Usuario'}</span>
           <span class="topbar-role">${session.role || 'usuario'}</span>
-          <span class="topbar-id">Número de Usuario: ${session.id || 'N/A'}</span>
+          <span class="topbar-id">ID: ${session.codigoUsuario || 'N/A'}</span>
         </div>
         <div class="topbar-actions">
+          <button id="openCourseMenu" class="btn ghost" type="button" aria-expanded="false" aria-controls="courseSidebar">Contenido</button>
+          <button id="manualBtn" class="btn ghost" type="button">Manual</button>
           <button id="supportBtn" class="btn ghost" type="button">Soporte</button>
           ${session.role === 'admin' ? '<button id="dashboardBtn" class="btn primary" type="button">Dashboard</button>' : ''}
           <button id="logoutBtn" class="btn ghost" type="button">Cerrar sesión</button>
         </div>
       </nav>
       <div class="course-body">
-        <aside class="course-sidebar">
-          <h4 class="sidebar-heading">Contenido del curso</h4>
+        <div id="courseSidebarBackdrop" class="course-sidebar-backdrop" aria-hidden="true"></div>
+        <nav id="courseSidebar" class="course-sidebar" aria-label="Contenido del curso">
+          <div class="course-sidebar-mobile-heading">
+            <h4 class="sidebar-heading">Contenido del curso</h4>
+            <button id="closeCourseMenu" class="btn ghost" type="button">Cerrar</button>
+          </div>
           <div id="sidebarList" class="sidebar-list">
             <p class="empty-state">Cargando...</p>
           </div>
-        </aside>
+        </nav>
         <main class="course-view">
           <div class="course-progress">
             <span>Progreso</span>
@@ -964,6 +1015,57 @@ export function courseView(session = {}) {
       </div>
     </div>
   `;
+
+  document.getElementById('manualBtn')?.addEventListener('click', openUserManual);
+  const courseSidebar = document.getElementById('courseSidebar');
+  const sidebarBackdrop = document.getElementById('courseSidebarBackdrop');
+  const openCourseMenu = document.getElementById('openCourseMenu');
+  const closeCourseMenu = document.getElementById('closeCourseMenu');
+  const topbar = document.querySelector('.topbar');
+  const courseMain = document.querySelector('.course-view');
+  const setCourseMenuOpen = (open) => {
+    courseSidebar?.classList.toggle('open', open);
+    sidebarBackdrop?.classList.toggle('active', open);
+    if (topbar instanceof HTMLElement) topbar.inert = open;
+    if (courseMain instanceof HTMLElement) courseMain.inert = open;
+    openCourseMenu?.setAttribute('aria-expanded', String(open));
+    if (courseSidebar instanceof HTMLElement) {
+      if (open) {
+        courseSidebar.setAttribute('role', 'dialog');
+        courseSidebar.setAttribute('aria-modal', 'true');
+        closeCourseMenu?.focus();
+      } else {
+        courseSidebar.removeAttribute('role');
+        courseSidebar.removeAttribute('aria-modal');
+        openCourseMenu?.focus();
+      }
+    }
+  };
+  openCourseMenu?.addEventListener('click', () => setCourseMenuOpen(true));
+  closeCourseMenu?.addEventListener('click', () => setCourseMenuOpen(false));
+  sidebarBackdrop?.addEventListener('click', () => setCourseMenuOpen(false));
+  courseSidebar?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setCourseMenuOpen(false);
+      return;
+    }
+    if (event.key !== 'Tab' || !(courseSidebar instanceof HTMLElement)) return;
+    const focusable = Array.from(courseSidebar.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled)'))
+      .filter((element) => element.getClientRects().length > 0);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last?.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first?.focus();
+    }
+  });
+  document.getElementById('sidebarList')?.addEventListener('click', (event) => {
+    if ((event.target as Element | null)?.closest('.sidebar-item')) setCourseMenuOpen(false);
+  });
 
   const renderExercises = (exercises = []) => {
     const container = document.getElementById('courseContainer');
@@ -1072,9 +1174,9 @@ export function courseView(session = {}) {
         const idEl = document.querySelector('.topbar-id');
         if (pillEl) pillEl.textContent = me.user;
         if (roleEl) roleEl.textContent = me.role;
-        if (idEl) idEl.textContent = `Número de Usuario: ${me.id}`;
+        if (idEl) idEl.textContent = `ID: ${me.codigoUsuario || 'N/A'}`;
 
-        const updatedSession = { user: me.user, role: me.role, id: me.id, progreso: me.progreso, calificacion: me.calificacion };
+        const updatedSession = { user: me.user, role: me.role, id: me.id, codigoUsuario: me.codigoUsuario, progreso: me.progreso, calificacion: me.calificacion };
 
         const actions = document.querySelector('.topbar-actions');
         let dashboardBtn = document.getElementById('dashboardBtn');
