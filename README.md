@@ -43,7 +43,13 @@ Para desarrollo local, `npm start` lee `.env` si existe. Si la base no tiene nin
 
 Cada cuenta recibe un identificador público diario compacto en formato `AAMMDDNN`, por ejemplo `26092901`. El contador se guarda por fecha y continúa aunque se eliminen cuentas. Los IDs antiguos con barras se convierten al nuevo formato al iniciar el servidor; la clave primaria interna sigue oculta y mantiene los vínculos existentes.
 
+## Control de inscripciones
+
+El admin gestiona el registro público desde **Dashboard → Gestión de usuarios**, en la tarjeta destacada **Inscripciones públicas**. El botón **Abrir inscripciones** permite crear cuentas desde la pantalla de acceso; **Cerrar inscripciones** bloquea nuevas altas públicas y oculta el botón de registro. El estado queda guardado en SQLite y el formulario de acceso lo actualiza automáticamente mientras está abierto. La administración conserva la posibilidad de crear usuarios desde Gestión de usuarios, incluso cuando el registro público está cerrado. En instalaciones nuevas las inscripciones comienzan cerradas.
+
 Abre el botón **Manual de uso** en el acceso o **Manual** en la barra superior para consultar la guía dentro de la aplicación. También puedes abrir [docs/manual.html](docs/manual.html) directamente e imprimir o guardar como PDF desde el navegador.
+
+Consulta [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) para revisar los controles comprobados y los riesgos pendientes.
 
 ## Despliegue
 

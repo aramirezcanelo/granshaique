@@ -32,9 +32,24 @@ export function authView() {
                 </button>
               </div>
             </label>
+            <div class="login-honeypot" aria-hidden="true" inert>
+              <label for="websiteField">Deja este campo vacío</label>
+              <input id="websiteField" name="website" type="text" tabindex="-1" autocomplete="off" />
+            </div>
+            <fieldset class="login-challenge">
+              <legend>Verificación de seguridad</legend>
+              <p id="challengePrompt" class="challenge-prompt">Cargando reto…</p>
+              <div class="challenge-answer-row">
+                <label class="sr-only" for="challengeAnswer">Respuesta al cálculo</label>
+                <input id="challengeAnswer" name="challengeAnswer" type="number" inputmode="numeric" min="0" max="99" step="1" placeholder="Tu respuesta" required aria-describedby="challengeHelp" />
+                <button class="btn ghost challenge-refresh" type="button" id="refreshChallengeBtn" aria-label="Obtener otro reto">Otro reto</button>
+              </div>
+              <span class="challenge-help" id="challengeHelp">Resuelve el cálculo para continuar. El reto vence en 5 minutos.</span>
+            </fieldset>
             <div id="authMessage" class="auth-message"></div>
             <button class="btn primary" type="submit">Accede</button>
-            <button class="btn ghost" type="button" id="registerBtn">¡Registrala!</button>
+            <button class="btn ghost" type="button" id="registerBtn" disabled>Consultando inscripciones…</button>
+            <p id="registrationStatusMessage" class="registration-status-message" role="status"></p>
           </form>
           <button class="btn ghost manual-link" type="button" id="manualBtn">Manual de uso</button>
         </div>
@@ -49,6 +64,68 @@ export function authView() {
   const userInput = document.getElementById('authUser');
   const passInput = document.getElementById('authPassword');
   const manualBtn = document.getElementById('manualBtn');
+  const challengePrompt = document.getElementById('challengePrompt');
+  const challengeAnswer = document.getElementById('challengeAnswer');
+  const refreshChallengeBtn = document.getElementById('refreshChallengeBtn');
+  const websiteField = document.getElementById('websiteField');
+  const registrationStatusMessage = document.getElementById('registrationStatusMessage');
+  let challengeLoaded = false;
+
+  const loadRegistrationStatus = async () => {
+    registerBtn.disabled = true;
+    try {
+      const response = await fetch('/api/registration-status', { credentials: 'same-origin', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || typeof data.open !== 'boolean') throw new Error('No se pudo consultar');
+      registerBtn.hidden = !data.open;
+      registerBtn.textContent = data.open ? '¡Regístrate!' : 'Inscripciones cerradas';
+      registrationStatusMessage.textContent = data.open ? '' : 'Las inscripciones están cerradas. Consulta con la administración.';
+      registerBtn.disabled = !data.open;
+    } catch {
+      registerBtn.hidden = true;
+      registrationStatusMessage.textContent = 'No se pudo consultar si las inscripciones están abiertas.';
+    }
+  };
+
+  if (location.protocol !== 'file:') {
+    void loadRegistrationStatus();
+    window.addEventListener('registrationStatusChanged', () => void loadRegistrationStatus());
+    window.setInterval(() => {
+      if (!document.hidden) void loadRegistrationStatus();
+    }, 5000);
+  }
+  else {
+    registerBtn.hidden = true;
+    registrationStatusMessage.textContent = 'Las inscripciones se gestionan desde el servidor.';
+  }
+
+  const loadChallenge = async () => {
+    challengeLoaded = false;
+    challengePrompt.textContent = 'Cargando reto…';
+    challengeAnswer.value = '';
+    challengeAnswer.disabled = true;
+    refreshChallengeBtn.disabled = true;
+    if (location.protocol === 'file:') {
+      challengePrompt.textContent = 'El reto de seguridad está disponible al iniciar el servidor.';
+      return;
+    }
+    try {
+      const response = await fetch('/api/login-challenge', { credentials: 'same-origin', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || typeof data.prompt !== 'string') throw new Error('Challenge unavailable');
+      challengePrompt.textContent = data.prompt;
+      challengeLoaded = true;
+      challengeAnswer.disabled = false;
+      challengeAnswer.focus({ preventScroll: true });
+    } catch {
+      challengePrompt.textContent = 'No se pudo cargar el reto. Pulsa “Otro reto” para reintentar.';
+    } finally {
+      refreshChallengeBtn.disabled = false;
+    }
+  };
+
+  refreshChallengeBtn.addEventListener('click', loadChallenge);
+  void loadChallenge();
 
   manualBtn.addEventListener('click', openUserManual);
 
@@ -62,7 +139,8 @@ export function authView() {
 
   const showMessage = (text, ok = true) => {
     messageBox.textContent = text;
-    messageBox.style.color = ok ? '#0f766e' : '#b91c1c';
+    messageBox.classList.toggle('is-success', ok);
+    messageBox.classList.toggle('is-error', !ok);
   };
 
   const submit = async (mode) => {
@@ -77,18 +155,29 @@ export function authView() {
       showMessage('Completa usuario y contraseña.', false);
       return;
     }
+    if (!challengeLoaded) {
+      showMessage('Espera a que cargue el reto de seguridad o pulsa “Otro reto”.', false);
+      return;
+    }
+    if (!challengeAnswer.value.trim()) {
+      showMessage('Resuelve el reto de seguridad para continuar.', false);
+      challengeAnswer.focus();
+      return;
+    }
 
     try {
       const res = await fetch(`/api/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ user, pass })
+        body: JSON.stringify({ user, pass, challengeAnswer: challengeAnswer.value, website: websiteField.value })
       });
 
       const data = await res.json();
       if (!res.ok) {
         showMessage(data.message || 'Error.', false);
+        await loadChallenge();
+        if (mode === 'register') await loadRegistrationStatus();
         return;
       }
 
@@ -96,6 +185,7 @@ export function authView() {
         showMessage('Registrada con éxito', true);
         form.reset();
         passInput.autocomplete = 'current-password';
+        await loadChallenge();
         return;
       }
 

@@ -1,4 +1,4 @@
-import { showToast, showConfirm, showPrompt, SEPARATOR_TYPE, generateWordSearchGrid } from '../shared/ui';
+import { showToast, showConfirm, showPrompt, SEPARATOR_TYPE, generateWordSearchGrid, escapeHtml } from '../shared/ui';
 
 const GRADABLE_TYPES = [
   'Quizz conTexto',
@@ -67,6 +67,7 @@ const makeExercise = (type, index = 1) => ({
 
 let exerciseBank = [];
 let allUsers = [];
+let registrationStatusPoll = 0;
 let selectedTypeForForm = null;
 let orderModeActive = false;
 let selectedExerciseIds = new Set();
@@ -168,7 +169,7 @@ async function uploadFile(file) {
 function renderStringListEditor(idx, listKey, list, placeholder) {
   const rows = (list || []).map((val, i) => `
     <div class="list-row">
-      <input type="text" value="${val}" placeholder="${placeholder} ${i + 1}" data-index="${idx}" data-listkey="${listKey}" data-listindex="${i}" class="list-item-input" />
+      <input type="text" value="${escapeHtml(val)}" placeholder="${escapeHtml(placeholder)} ${i + 1}" data-index="${idx}" data-listkey="${escapeHtml(listKey)}" data-listindex="${i}" class="list-item-input" />
       <button type="button" class="btn danger small remove-list-btn" data-index="${idx}" data-listkey="${listKey}" data-listindex="${i}">✕</button>
     </div>
   `).join('');
@@ -186,7 +187,7 @@ function renderPointsField(item, idx) {
     <div class="points-field">
       <label>Vale:</label>
       <input type="number" min="0" step="1" value="${item.points ?? 1}" data-index="${idx}" data-field="points" />
-      <span style="font-size:0.72rem;color:var(--primary-dark);font-weight:700;">pts</span>
+      <span class="points-unit">pts</span>
     </div>
   `;
 }
@@ -210,7 +211,7 @@ function renderTypeFields(item, idx) {
           <input type="radio" name="correct-${idx}" value="${optIdx}" ${optIdx === correctIndex ? 'checked' : ''} />
           Correcta
         </label>
-        <input type="text" value="${opt}" placeholder="Inciso ${optIdx + 1}" data-index="${idx}" data-optindex="${optIdx}" class="exercise-opt-input" />
+        <input type="text" value="${escapeHtml(opt)}" placeholder="Inciso ${optIdx + 1}" data-index="${idx}" data-optindex="${optIdx}" class="exercise-opt-input" />
         <button type="button" class="btn danger small remove-opt-btn" data-index="${idx}" data-optindex="${optIdx}">✕</button>
       </div>
     `).join('');
@@ -220,12 +221,12 @@ function renderTypeFields(item, idx) {
         ${item.type === 'Quizz con Video' ? `
           <div class="field-group">
             <label>URL de YouTube:</label>
-            <input type="text" value="${item.data?.videoUrl || ''}" placeholder="https://www.youtube.com/watch?v=..." data-index="${idx}" data-field="videoUrl" />
+            <input type="text" value="${escapeHtml(item.data?.videoUrl)}" placeholder="https://www.youtube.com/watch?v=..." data-index="${idx}" data-field="videoUrl" />
           </div>
         ` : ''}
         <div class="field-group">
           <label>Pregunta:</label>
-          <input type="text" value="${item.data?.question || ''}" placeholder="Escribe la pregunta..." data-index="${idx}" data-field="question" />
+          <input type="text" value="${escapeHtml(item.data?.question)}" placeholder="Escribe la pregunta..." data-index="${idx}" data-field="question" />
         </div>
         <div class="field-group">
           <div class="options-header">
@@ -247,11 +248,11 @@ function renderTypeFields(item, idx) {
       <div class="type-specific-fields">
         <div class="field-group">
           <label>Frase con hueco (usa ___ para el espacio):</label>
-          <input type="text" value="${item.data?.sentence || ''}" placeholder="Ej: El agua es ___" data-index="${idx}" data-field="sentence" />
+          <input type="text" value="${escapeHtml(item.data?.sentence)}" placeholder="Ej: El agua es ___" data-index="${idx}" data-field="sentence" />
         </div>
         <div class="field-group">
           <label>Respuesta correcta:</label>
-          <input type="text" value="${item.data?.correctAnswer || ''}" placeholder="Ej: transparente" data-index="${idx}" data-field="correctAnswer" />
+          <input type="text" value="${escapeHtml(item.data?.correctAnswer)}" placeholder="Ej: transparente" data-index="${idx}" data-field="correctAnswer" />
         </div>
         ${renderAttemptsField(item, idx)}
       </div>
@@ -263,11 +264,11 @@ function renderTypeFields(item, idx) {
       <div class="type-specific-fields">
         <div class="field-group">
           <label>Palabra secreta:</label>
-          <input type="text" value="${item.data?.palabraSecreta || ''}" placeholder="Ej: ORATORIA" data-index="${idx}" data-field="palabraSecreta" />
+          <input type="text" value="${escapeHtml(item.data?.palabraSecreta)}" placeholder="Ej: ORATORIA" data-index="${idx}" data-field="palabraSecreta" />
         </div>
         <div class="field-group">
           <label>Pista:</label>
-          <input type="text" value="${item.data?.pista || ''}" placeholder="Pista para el alumno" data-index="${idx}" data-field="pista" />
+          <input type="text" value="${escapeHtml(item.data?.pista)}" placeholder="Pista para el alumno" data-index="${idx}" data-field="pista" />
         </div>
         <div class="field-group">
           <label>Intentos permitidos:</label>
@@ -298,8 +299,8 @@ function renderTypeFields(item, idx) {
     const items = item.data?.items || [];
     const rows = items.map((pair, i) => `
       <div class="pair-row">
-        <input type="text" value="${pair.concepto || ''}" placeholder="Concepto" data-index="${idx}" data-listkey="items" data-listindex="${i}" data-subfield="concepto" class="list-item-input" />
-        <input type="text" value="${pair.definicion || ''}" placeholder="Definición correspondiente" data-index="${idx}" data-listkey="items" data-listindex="${i}" data-subfield="definicion" class="list-item-input" />
+        <input type="text" value="${escapeHtml(pair.concepto)}" placeholder="Concepto" data-index="${idx}" data-listkey="items" data-listindex="${i}" data-subfield="concepto" class="list-item-input" />
+        <input type="text" value="${escapeHtml(pair.definicion)}" placeholder="Definición correspondiente" data-index="${idx}" data-listkey="items" data-listindex="${i}" data-subfield="definicion" class="list-item-input" />
         <button type="button" class="btn danger small remove-pair-btn" data-index="${idx}" data-listindex="${i}">✕</button>
       </div>
     `).join('');
@@ -323,7 +324,7 @@ function renderTypeFields(item, idx) {
       <div class="type-specific-fields">
         <div class="field-group">
           <label>Pregunta / instrucción:</label>
-          <input type="text" value="${item.data?.pregunta || ''}" placeholder="Ej: Ordena la secuencia" data-index="${idx}" data-field="pregunta" />
+          <input type="text" value="${escapeHtml(item.data?.pregunta)}" placeholder="Ej: Ordena la secuencia" data-index="${idx}" data-field="pregunta" />
         </div>
         <div class="field-group">
           <label>Pasos en el orden correcto:</label>
@@ -359,7 +360,7 @@ function renderTypeFields(item, idx) {
         <div class="field-group">
           <label>${labelByType[item.type]}</label>
           <input type="file" accept="${FILE_TYPE_ACCEPT[item.type]}" data-index="${idx}" class="file-upload-input" />
-          <p class="list-hint" data-role="file-status">${fileName ? `Archivo actual: ${fileName}` : 'Sin archivo seleccionado todavía.'}</p>
+          <p class="list-hint" data-role="file-status">${fileName ? `Archivo actual: ${escapeHtml(fileName)}` : 'Sin archivo seleccionado todavía.'}</p>
         </div>
       </div>
     `;
@@ -370,7 +371,7 @@ function renderTypeFields(item, idx) {
       <div class="type-specific-fields">
         <div class="field-group">
           <label>Contenido:</label>
-          <textarea class="prompt-textarea" data-index="${idx}" data-field="content" placeholder="Escribe el texto que verá el alumno...">${item.data?.content || ''}</textarea>
+          <textarea class="prompt-textarea" data-index="${idx}" data-field="content" placeholder="Escribe el texto que verá el alumno...">${escapeHtml(item.data?.content)}</textarea>
         </div>
       </div>
     `;
@@ -392,17 +393,17 @@ function renderExerciseForm(type) {
     return `
       <div class="exercise-card ${isUnpublished ? 'exercise-card-unpublished' : ''}" data-index="${idx}">
         <div class="exercise-header">
-          <strong>${item.type}</strong>
+          <strong>${escapeHtml(item.type)}</strong>
           ${isUnpublished ? '<span class="unpublished-badge">Sin publicar</span>' : ''}
           ${renderPointsField(item, idx)}
         </div>
         <div class="field-group">
           <label>Título:</label>
-          <input type="text" value="${item.title}" data-index="${idx}" data-field="title" />
+          <input type="text" value="${escapeHtml(item.title)}" data-index="${idx}" data-field="title" />
         </div>
         <div class="field-group">
           <label>Instrucciones:</label>
-          <textarea class="prompt-textarea" data-index="${idx}" data-field="prompt" placeholder="Escribe las instrucciones aquí...">${item.prompt}</textarea>
+          <textarea class="prompt-textarea" data-index="${idx}" data-field="prompt" placeholder="Escribe las instrucciones aquí...">${escapeHtml(item.prompt)}</textarea>
         </div>
 
         ${renderTypeFields(item, idx)}
@@ -737,9 +738,9 @@ function renderOrderPanel() {
       <span class="drag-handle" title="Mantén presionado y arrastra para reordenar">
         <span></span><span></span><span></span><span></span><span></span><span></span>
       </span>
-      ${isSeparator ? '<span class="order-select-spacer" aria-hidden="true"></span>' : `<input class="order-select" type="checkbox" data-id="${ex.id}" aria-label="Seleccionar ${ex.title}" ${selectedExerciseIds.has(ex.id) ? 'checked' : ''}>`}
-      <span class="order-type-badge">${isSeparator ? '— Separador —' : ex.type}</span>
-      <span class="order-title">${ex.title}</span>
+      ${isSeparator ? '<span class="order-select-spacer" aria-hidden="true"></span>' : `<input class="order-select" type="checkbox" data-id="${escapeHtml(ex.id)}" aria-label="Seleccionar ${escapeHtml(ex.title)}" ${selectedExerciseIds.has(ex.id) ? 'checked' : ''}>`}
+      <span class="order-type-badge">${isSeparator ? '— Separador —' : escapeHtml(ex.type)}</span>
+      <span class="order-title">${escapeHtml(ex.title)}</span>
       <div class="arrow-btn-group">
         <button type="button" class="arrow-btn order-up" data-index="${i}" ${i === 0 ? 'disabled' : ''}>▲</button>
         <button type="button" class="arrow-btn order-down" data-index="${i}" ${i === exerciseBank.length - 1 ? 'disabled' : ''}>▼</button>
@@ -959,22 +960,22 @@ function renderUserRows(users) {
   }
 
   tbody.innerHTML = users.map((user) => `
-    <tr data-id="${user.id}">
-      <td><input type="text" value="${user.user}" data-field="user"></td>
+    <tr data-id="${escapeHtml(user.id)}">
+      <td><input type="text" value="${escapeHtml(user.user)}" data-field="user"></td>
       <td>
         <div class="password-wrap">
           <input type="password" value="" placeholder="Dejar vacío para conservar" data-field="pass" class="pass-input" autocomplete="new-password">
         </div>
       </td>
-      <td><input type="number" value="${user.progreso}" data-field="progreso" readonly title="Se calcula automáticamente según lo que responde el alumno"></td>
-      <td><div class="grade-wrap"><input type="number" value="${user.calificacion}" data-field="calificacion" readonly title="Se calcula automáticamente según lo que responde el alumno"><span class="grade-suffix">/100</span></div></td>
+      <td><input type="number" value="${escapeHtml(user.progreso)}" data-field="progreso" readonly title="Se calcula automáticamente según lo que responde el alumno"></td>
+      <td><div class="grade-wrap"><input type="number" value="${escapeHtml(user.calificacion)}" data-field="calificacion" readonly title="Se calcula automáticamente según lo que responde el alumno"><span class="grade-suffix">/100</span></div></td>
       <td>
         <select data-field="rol" class="select-custom">
           <option value="admin" ${user.rol === 'admin' ? 'selected' : ''}>admin</option>
           <option value="usuario" ${user.rol === 'usuario' ? 'selected' : ''}>usuario</option>
         </select>
       </td>
-      <td><code class="user-public-id">${user.codigoUsuario || 'Asignando…'}</code></td>
+      <td><code class="user-public-id">${escapeHtml(user.codigoUsuario || 'Asignando…')}</code></td>
       <td>
         <div class="action-buttons">
           <button type="button" class="btn primary save-user">Guardar</button>
@@ -1058,6 +1059,15 @@ function loadUsers() {
     .then(({ users = [] }) => {
       allUsers = users;
       panel.innerHTML = `
+        <section class="registration-admin-control" aria-labelledby="registrationAdminTitle">
+          <div class="registration-admin-copy">
+            <span class="registration-admin-kicker">Acceso comunitario</span>
+            <strong id="registrationAdminTitle">Inscripciones públicas</strong>
+            <span id="registrationAdminStatus" class="registration-admin-status" role="status" aria-live="polite">Consultando estado…</span>
+            <small>Al cerrar, nadie podrá crear una cuenta desde la pantalla de acceso.</small>
+          </div>
+          <button id="toggleRegistrationBtn" type="button" class="btn primary registration-admin-toggle" disabled>Cargando…</button>
+        </section>
         <div class="user-controls">
           <input type="text" id="searchUserId" placeholder="Buscar por ID o usuario..." class="search-input" />
           <button id="showAddUserBtn" type="button" class="btn primary">+ Usuario</button>
@@ -1093,6 +1103,57 @@ function loadUsers() {
           </table>
         </div>
       `;
+
+      const registrationStatus = panel.querySelector('#registrationAdminStatus');
+      const registrationButton = panel.querySelector('#toggleRegistrationBtn');
+      let registrationsOpen = false;
+      const refreshRegistrationStatus = async () => {
+        registrationButton.disabled = true;
+        registrationButton.textContent = 'Consultando…';
+        try {
+          const response = await fetch('/api/registration-status', { credentials: 'same-origin', cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok || typeof data.open !== 'boolean') throw new Error('No se pudo consultar');
+          registrationsOpen = data.open;
+          registrationStatus.textContent = registrationsOpen ? 'Abiertas · las personas pueden registrarse' : 'Cerradas · no se aceptan cuentas nuevas';
+          registrationStatus.classList.toggle('is-open', registrationsOpen);
+          registrationButton.textContent = registrationsOpen ? 'Cerrar inscripciones' : 'Abrir inscripciones';
+          registrationButton.classList.toggle('is-close-action', registrationsOpen);
+          registrationButton.disabled = false;
+        } catch {
+          registrationStatus.textContent = 'No se pudo consultar el estado';
+          registrationStatus.classList.remove('is-open');
+          registrationButton.textContent = 'Reintentar';
+          registrationButton.disabled = false;
+        }
+      };
+      registrationButton.addEventListener('click', async () => {
+        registrationButton.disabled = true;
+        try {
+          const response = await fetch('/api/admin/registration', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ open: !registrationsOpen })
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.message || 'No se pudo actualizar el estado.');
+          registrationsOpen = data.open;
+          showToast(data.message, 'success');
+          window.dispatchEvent(new CustomEvent('registrationStatusChanged', { detail: { open: registrationsOpen } }));
+          await refreshRegistrationStatus();
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : 'No se pudo actualizar el estado.', 'error');
+          await refreshRegistrationStatus();
+        }
+      });
+      void refreshRegistrationStatus();
+      if (registrationStatusPoll) window.clearInterval(registrationStatusPoll);
+      registrationStatusPoll = window.setInterval(() => {
+        if (!document.hidden && document.querySelector('#dashboardDrawer.open #registrationAdminStatus')) {
+          void refreshRegistrationStatus();
+        }
+      }, 5000);
 
       renderUserRows(allUsers);
 
@@ -1199,7 +1260,12 @@ export function dashboardView(session = {}) {
     if (!isResizing) return;
     const newWidth = window.innerWidth - e.clientX;
     if (newWidth >= 340 && newWidth <= window.innerWidth * 0.85) {
-      document.documentElement.style.setProperty('--drawer-width', `${newWidth}px`);
+      const drawerSizes = [40, 50, 60, 70, 80];
+      const targetSize = (newWidth / window.innerWidth) * 100;
+      const nextSize = drawerSizes.reduce((closest, size) => Math.abs(size - targetSize) < Math.abs(closest - targetSize) ? size : closest, drawerSizes[0]);
+      drawer.dataset.size = String(nextSize);
+      document.body.classList.remove(...drawerSizes.map((size) => `drawer-size-${size}`));
+      document.body.classList.add(`drawer-size-${nextSize}`);
     }
   });
 
@@ -1256,3 +1322,4 @@ export function dashboardView(session = {}) {
     }
   }, 10000);
 }
+

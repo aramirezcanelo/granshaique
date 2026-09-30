@@ -1,28 +1,56 @@
 # Auditoría técnica y de seguridad
 
-Fecha: 2026-09-29. Alcance: fuentes y configuración disponibles en este repositorio. Esta revisión no constituye una auditoría de penetración, certificación ni verificación del proveedor de alojamiento.
+Fecha: 2026-09-29. Alcance: código fuente, configuración, dependencias bloqueadas y base SQLite local. No es una prueba de penetración ni verifica la configuración privada de Render.
 
-## Cambios realizados
+## Resumen
 
-- TypeScript del servidor compila con `strict`, `noImplicitAny`, `noUnusedLocals` y `removeComments`. El comando `npm run typecheck` lo verifica antes de crear los bundles.
-- El empaquetado sigue generando el servidor y el cliente bajo `dist/`; no genera source maps y el servidor solo sirve una lista explícita de recursos estáticos. No entrega archivos `.ts`.
-- Las entradas JSON se rechazan si no son objetos. Se conservan límites de cuerpo, validación de credenciales, parámetros SQL y autorización administrativa por rol.
-- El inicio de sesión limita a diez intentos fallidos por IP cada quince minutos y responde con HTTP 429 al excederlos.
-- En producción se exige `Origin` del mismo host en las mutaciones y se envía HSTS. Las cookies de sesión ya usan `HttpOnly` y `SameSite=Strict`; `Secure` se activa en producción.
-- `/health` y `/healthz` comprueban también que SQLite responda, y no revelan detalles internos ante un fallo.
-- Se eliminaron los `console.log` de diagnóstico. Los errores operativos usan el nivel `error` y las líneas de arranque `info`.
-- `.env.example` documenta variables sin incluir secretos. La base local, cargas, `node_modules` y `dist` están excluidos de Git.
+La contraseña temporal en texto claro se quitó del `.env` local, que está ignorado por Git, y se reinició el servidor para descargarla de su entorno. La base local contiene dos cuentas admin y ambas tienen contraseñas con hash `scrypt`; por eso retirar la variable no cambia las credenciales guardadas ni invalida la contraseña anterior. Si se necesita revocarla, hay que cambiar la contraseña de la cuenta.
 
-## Límites y acciones fuera del código
+La aplicación tiene controles útiles para un proyecto pequeño: contraseñas con hash, autorización admin en rutas de gestión, cookies de sesión protegidas, validación del origen en producción, consultas SQL parametrizadas y límites de tamaño. Se añadieron reto de un solo uso y honeypot a las altas públicas, límite de 10 intentos por IP cada 15 minutos y escape del contenido editable antes de insertarlo en plantillas HTML. El reto de suma sigue siendo fácil de automatizar; el rate limit en memoria y las operaciones síncronas también limitan cuánto tráfico puede manejar una sola instancia.
 
-- El cliente se transpila y empaqueta con esbuild, pero no está incluido en el chequeo estricto de TypeScript: sus vistas usan muchos selectores DOM dinámicos y requieren una migración tipada propia antes de activar `strict` para esos archivos.
-- El limitador por IP vive en memoria y se reinicia al reiniciar la instancia. En despliegues con varias instancias se requiere un almacén compartido y considerar la IP real del proxy confiable.
-- Este repositorio no define Docker, GitHub Actions, pruebas automatizadas, un ORM, React/TSX, GraphQL, Swagger ni servicios externos. Esos controles no se aplican a la arquitectura actual; no se añadieron dependencias o infraestructura ficticias.
-- WAF, protección DDoS, reglas de firewall, TLS del proveedor, backups externos cifrados, restauración, alertas, límites de CPU/RAM, políticas de ramas y notificaciones dependen de cuentas y permisos de la plataforma. `render.yaml` configura el servicio y el disco persistente, pero no demuestra que dichos controles estén activos.
-- La cookie usa `SameSite=Strict` y el servidor valida el origen de mutaciones en producción. No hay token CSRF separado; si se integran clientes externos o flujos entre sitios, se debe añadir un token anti-CSRF y revisar CORS.
-- Las contraseñas nuevas usan `scrypt` de Node.js con salt aleatorio y comparación en tiempo constante; la migración a Argon2id/bcrypt requiere una decisión de dependencia y migración de credenciales.
+## Controles comprobados
+
+- `tsconfig.json` y `tsconfig.server.json` activan `strict`, `noImplicitAny`, `noUnusedLocals` y `removeComments`. La búsqueda no encontró `any`, `@ts-ignore`, `@ts-expect-error` ni conversiones `as unknown as` en TypeScript.
+- `npm run build` compiló el servidor y empaquetó el cliente en `dist/`. El cliente usa esbuild con bundle y minificación; TypeScript no genera source maps por defecto. No se encontraron `.map` en `dist`, ni el servidor publica archivos `.ts`.
+- La búsqueda de código no encontró contraseñas o tokens literales en fuentes. `.env` no está versionado, no aparece en el historial de Git y ahora no contiene `ADMIN_PASSWORD`. `.env.example` deja el valor vacío y `render.yaml` solo declara el secreto como variable externa.
+- En la base local: 2 administradores, ambos con hash `scrypt`; 0 contraseñas sin hash. Las contraseñas nuevas usan salt aleatorio y comparación en tiempo constante. Sigue existiendo una ruta de compatibilidad que convierte contraseñas antiguas al iniciar sesión; la base de producción no se inspeccionó.
+- Las consultas que usan datos de usuario pasan valores como parámetros SQLite. El código no define un ORM; los esquemas e interfaces se mantienen manualmente.
+- Los endpoints de usuarios, cursos, archivos y ajustes administrativos verifican sesión y rol admin. El progreso requiere sesión y se vincula al usuario de la sesión.
+- Las altas públicas necesitan el reto de un solo uso ligado a cookie HttpOnly, el honeypot vacío y no superar 10 intentos por IP cada 15 minutos. La IP reenviada se considera solo cuando `RENDER=true`, y se valida como dirección IPv4 o IPv6. Las cuentas creadas desde una sesión admin no consumen el límite público.
+- Los textos de ejercicios, nombres, instrucciones, archivos y valores de usuarios se escapan en las plantillas dinámicas. Las vistas previas de archivo aceptan solo rutas locales bajo `/uploads/`; las URL de video se convierten a dominios YouTube permitidos y se rechazan si no se reconocen.
+- La cookie de sesión es `HttpOnly` y `SameSite=Strict`; `Secure` se añade en producción. Las sesiones usan tokens aleatorios de 256 bits, duran siete días y actualmente se guardan en memoria.
+- En producción se exige `Origin` del mismo host en las mutaciones. No hay CORS abierto. La política CSP permite scripts y estilos locales sin `unsafe-inline`; también están configurados HSTS en producción, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` y `Permissions-Policy`.
+- La lectura JSON tiene un límite de 1 MB y las cargas tienen límite de cuerpo y 15 MB decodificados; la carga requiere rol admin. Los archivos reciben nombres generados y la ruta está restringida a directorios públicos permitidos.
+- `npm audit --offline` informó 0 vulnerabilidades con los datos locales disponibles. No equivale a una consulta en línea actualizada.
+- No se encontraron `console.log`; los errores operativos se escriben con `console.error` y el arranque con `console.info`.
+
+## Riesgos que requieren atención
+
+### Prioridad alta
+
+1. **La verificación anti-bot es débil.** El reto de suma se resuelve con facilidad mediante automatización y no verifica correo ni identidad. Honeypot y límite por IP reducen registros automáticos simples; si se prevé exposición a spam, conviene agregar un proveedor CAPTCHA accesible o una prueba de trabajo y verificación de correo. No abras las inscripciones públicamente sin asumir este riesgo.
+2. **Las defensas por IP viven en memoria.** Los límites se reinician al reiniciar el proceso y cada instancia mantiene su propio contador. Si Render usa varias instancias o reinicia el servicio, usa un almacén compartido o limita el escalado. Revisa que el servicio de Render tenga `RENDER=true`; fuera de Render no se confía en `X-Forwarded-For`.
+
+### Prioridad media
+
+3. **Operaciones síncronas bloquean el Event Loop.** SQLite usa `DatabaseSync`, el hash usa `scryptSync` y las cargas escriben con `writeFileSync`. Con una instancia pequeña y baja concurrencia puede ser aceptable; ataques de carga o más usuarios pueden retrasar todas las solicitudes. Considerar APIs asíncronas, límites de concurrencia y pruebas de carga.
+4. **Las sesiones viven en memoria.** Reiniciar el proceso cierra todas las sesiones y las entradas vencidas no se purgan proactivamente. La configuración actual presupone una sola instancia. Para escalar, usar un almacén compartido con expiración y definir rotación/revocación al cambiar credenciales.
+5. **La validación de entradas es manual.** Hay comprobaciones por endpoint, pero no DTOs tipados con esquema ejecutable. La compilación TypeScript cubre el servidor; `tsconfig.json` incluye solo `server/**/*.ts` y el cliente se transpila sin chequeo estricto de tipos.
+6. **Complejidad y errores.** El enrutador concentra muchas rutas en `handleRequest`, no hay clases de error del dominio y ciertas promesas del cliente se manejan localmente con patrones distintos. Conviene modularizar rutas y validadores sin alterar la lógica de datos.
+7. **Carga de archivos.** Solo la administra un admin y se limita el tamaño, pero no hay lista permitida de tipos ni comprobación del contenido real del archivo. Definir los formatos admitidos y servir cargas como descargas cuando proceda.
+
+## Elementos no aplicables o no verificables aquí
+
+- Prisma, TypeORM, Drizzle, React/TSX, alias `@/`, GraphQL, Swagger, APIs de terceros y circuito de reintentos: no forman parte de esta aplicación. El empaquetado de cliente permite tree shaking; el servidor se transpila con `tsc` y no requiere un bundle.
+- Docker, firewall, WAF/CDN, mitigación DDoS, TLS del proveedor, reglas de IP, límites de recursos, CI/CD, protección de rama, webhook, monitoreo centralizado, copias externas y restauración: no se pueden confirmar desde este repositorio. Render configura disco y health check; hay que verificar los valores y políticas directamente en la cuenta.
+- La aplicación no redirige HTTP a HTTPS por sí misma; en Render la terminación TLS/redirección depende del proxy de la plataforma.
+- No hay suite de pruebas automatizadas, análisis SAST ni pruebas de penetración. `npm run build` y `npm audit --offline` no sustituyen esas revisiones.
 
 ## Verificación realizada
 
-- `npm run build`: compilación TypeScript del servidor y empaquetado local del cliente completados.
-- No se ejecutaron pruebas automatizadas ni un escáner de dependencias; el proyecto aún no incluye suite de pruebas. Para auditoría de despliegue, revisar los secretos y controles directamente en el proveedor antes de publicar.
+- `npm run build`: correcto; el servidor y el cliente se generaron en `dist/`.
+- `npm audit --offline`: 0 vulnerabilidades reportadas por la metadata local disponible.
+- Búsquedas estáticas: sin secretos literales versionados, `.env` ausente del seguimiento e historial de Git, sin `any`/directivas de omisión/conversiones dobles, sin mapas fuente y sin mutaciones de estilo en línea.
+- Servidor local después de retirar la variable: `/healthz` respondió correctamente y `/api/registration-status` respondió `{"open":false}`.
+- La compilación final posterior a los cambios de seguridad también pasó (`npm run build`). No se verificó una instancia de producción ni la configuración del dashboard de Render.
+- No se modificaron ni publicaron secretos de Render, GitHub ni otros servicios externos.

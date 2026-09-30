@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -15,7 +16,7 @@ type JsonHandler = (body: JsonObject) => void;
 const PORT = process.env.PORT || 8080;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_JSON_BYTES = 1_000_000;
-const SERVER_BUILD = 'responsive-deploy-v2-2026-09-29';
+const SERVER_BUILD = 'csp-inline-style-fix-2026-09-29';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Compiled output lives in dist/server; keep static assets and persistent data rooted at the project.
 const root = path.resolve(__dirname, '..', '..');
@@ -25,6 +26,13 @@ const uploadsDir = process.env.UPLOADS_DIR || path.join(root, 'uploads');
 if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 const db = new DatabaseSync(dbPath);
+
+db.exec(`CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+)`);
+db.prepare("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('public_registration_open', '0')").run();
+const isPublicRegistrationOpen = (): boolean => db.prepare("SELECT value FROM app_settings WHERE key = 'public_registration_open'").get()?.value === '1';
 
 db.exec(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,8 +189,13 @@ const assertValidLogin = (user: unknown, pass: unknown): string | null => {
 
 const sessions = new Map<string, Session>();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const registrationAttempts = new Map<string, { count: number; resetAt: number }>();
+type LoginChallenge = { answer: number; expiresAt: number };
+const loginChallenges = new Map<string, LoginChallenge>();
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
+const REGISTRATION_MAX_ATTEMPTS = 10;
+const LOGIN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
 function isLoginRateLimited(ip: string): boolean {
   const now = Date.now();
   for (const [key, attempt] of loginAttempts) {
@@ -200,10 +213,55 @@ function recordFailedLogin(ip: string): void {
   }
   current.count += 1;
 }
+function getClientIp(req: IncomingMessage): string {
+  // Render terminates the public connection at its edge and forwards the client IP.
+  // Ignore forwarded headers in local/other deployments unless explicitly on Render.
+  if (process.env.RENDER === 'true') {
+    const forwarded = req.headers['x-forwarded-for'];
+    const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim();
+    if (first && net.isIP(first)) return first;
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
+function isRegistrationRateLimited(ip: string): boolean {
+  const now = Date.now();
+  for (const [key, attempt] of registrationAttempts) {
+    if (attempt.resetAt <= now) registrationAttempts.delete(key);
+  }
+  const current = registrationAttempts.get(ip);
+  return !!current && current.resetAt > now && current.count >= REGISTRATION_MAX_ATTEMPTS;
+}
+function recordRegistrationAttempt(ip: string): void {
+  const now = Date.now();
+  const current = registrationAttempts.get(ip);
+  if (!current || current.resetAt <= now) registrationAttempts.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  else current.count += 1;
+}
 const parseCookies = (header = ''): Record<string, string> => Object.fromEntries(header.split(';').map((part) => {
   const index = part.indexOf('=');
   return index < 0 ? [] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1))];
 }).filter((entry) => entry.length));
+function createLoginChallenge(): { id: string; prompt: string; expiresAt: number } {
+  const now = Date.now();
+  for (const [id, challenge] of loginChallenges) {
+    if (challenge.expiresAt <= now) loginChallenges.delete(id);
+  }
+  const left = crypto.randomInt(2, 10);
+  const right = crypto.randomInt(1, 10);
+  const id = crypto.randomBytes(24).toString('hex');
+  const expiresAt = now + LOGIN_CHALLENGE_TTL_MS;
+  loginChallenges.set(id, { answer: left + right, expiresAt });
+  return { id, prompt: `¿Cuánto es ${left} + ${right}?`, expiresAt };
+}
+function consumeLoginChallenge(id: unknown, answer: unknown): boolean {
+  if (typeof id !== 'string' || !/^[a-f0-9]{48}$/.test(id)) return false;
+  const challenge = loginChallenges.get(id);
+  loginChallenges.delete(id);
+  if (!challenge || challenge.expiresAt <= Date.now()) return false;
+  if (typeof answer !== 'string' && typeof answer !== 'number') return false;
+  const normalizedAnswer = String(answer).trim();
+  return /^\d{1,2}$/.test(normalizedAnswer) && Number(normalizedAnswer) === challenge.answer;
+}
 const getSessionUser = (req: IncomingMessage): PublicUserRow | null => {
   const token = parseCookies(req.headers.cookie || '').session;
   const session = token && sessions.get(token);
@@ -353,6 +411,15 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
 
+  if (req.method === 'GET' && requestUrl === '/api/login-challenge') {
+    const challenge = createLoginChallenge();
+    const secure = IS_PRODUCTION ? '; Secure' : '';
+    res.setHeader('Set-Cookie', `login_challenge=${challenge.id}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=300${secure}`);
+    res.setHeader('Cache-Control', 'no-store, private');
+    sendJson(res, 200, { prompt: challenge.prompt, expiresAt: challenge.expiresAt });
+    return;
+  }
+
   if (req.method === 'GET' && requestUrl.split('?')[0] === '/500') {
     sendErrorPage(res, 500);
     return;
@@ -377,6 +444,25 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
 
     const users = db.prepare('SELECT id, codigo_usuario AS codigoUsuario, user, progreso, calificacion, rol, manual_override FROM users ORDER BY id').all();
     sendJson(res, 200, { users });
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/api/registration-status') {
+    sendJson(res, 200, { open: isPublicRegistrationOpen() });
+    return;
+  }
+
+  if (req.method === 'PUT' && req.url === '/api/admin/registration') {
+    const session = getSessionUser(req);
+    if (!session || session.rol !== 'admin') {
+      sendJson(res, 403, { message: 'No autorizado.' });
+      return;
+    }
+    readJson(req, res, ({ open }) => {
+      if (typeof open !== 'boolean') return sendJson(res, 400, { message: 'El estado de inscripciones no es válido.' });
+      db.prepare("UPDATE app_settings SET value = ? WHERE key = 'public_registration_open'").run(open ? '1' : '0');
+      sendJson(res, 200, { open, message: open ? 'Inscripciones abiertas.' : 'Inscripciones cerradas.' });
+    });
     return;
   }
 
@@ -750,17 +836,40 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 
   if (req.method === 'POST' && (req.url === '/api/register' || req.url === '/api/login')) {
-    readJson(req, res, ({ user, pass, rol }) => {
+    readJson(req, res, ({ user, pass, rol, challengeAnswer, website }) => {
       if (typeof user !== 'string' || typeof pass !== 'string') return sendJson(res, 400, { message: 'Faltan datos para acceder.' });
-      const ip = req.socket.remoteAddress || 'unknown';
+      const ip = getClientIp(req);
+      const requester = req.url === '/api/register' ? getSessionUser(req) : null;
+      if (req.url === '/api/login') {
+        const cookies = parseCookies(req.headers.cookie || '');
+        const cookieChallengeId = cookies.login_challenge;
+        res.setHeader('Set-Cookie', `login_challenge=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
+        if (typeof website === 'string' && website.trim()) {
+          recordFailedLogin(ip);
+          return sendJson(res, 400, { message: 'No se pudo validar el acceso. Actualiza el reto e inténtalo de nuevo.' });
+        }
+        if (!consumeLoginChallenge(cookieChallengeId, challengeAnswer)) {
+          recordFailedLogin(ip);
+          return sendJson(res, 400, { message: 'Resuelve el reto antes de acceder. Te mostramos uno nuevo.' });
+        }
+      }
+      if (req.url === '/api/register' && (!requester || requester.rol !== 'admin')) {
+        if (isRegistrationRateLimited(ip)) return sendJson(res, 429, { message: 'Se alcanzó el límite de registros desde esta conexión. Inténtalo más tarde.' });
+        recordRegistrationAttempt(ip);
+        const cookies = parseCookies(req.headers.cookie || '');
+        const cookieChallengeId = cookies.login_challenge;
+        res.setHeader('Set-Cookie', `login_challenge=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
+        if (typeof website === 'string' && website.trim()) return sendJson(res, 400, { message: 'No se pudo validar el registro. Actualiza el reto e inténtalo de nuevo.' });
+        if (!consumeLoginChallenge(cookieChallengeId, challengeAnswer)) return sendJson(res, 400, { message: 'Resuelve el reto antes de registrarte. Te mostramos uno nuevo.' });
+      }
       if (req.url === '/api/login' && isLoginRateLimited(ip)) return sendJson(res, 429, { message: 'Demasiados intentos. Espera 15 minutos e inténtalo de nuevo.' });
       const validationError = req.url === '/api/login' ? assertValidLogin(user, pass) : assertValidCredentials(user, pass);
       if (validationError) return sendJson(res, 400, { message: validationError });
 
       if (req.url === '/api/register') {
-        const requester = getSessionUser(req);
         const requestedRole = rol === 'admin' ? 'admin' : 'usuario';
         if (requestedRole === 'admin' && (!requester || requester.rol !== 'admin')) return sendJson(res, 403, { message: 'No autorizado.' });
+        if ((!requester || requester.rol !== 'admin') && !isPublicRegistrationOpen()) return sendJson(res, 403, { message: 'Las inscripciones están cerradas. Consulta con la administración.' });
         const exists = db.prepare('SELECT 1 FROM users WHERE user = ?').get(user);
         if (exists) return sendJson(res, 409, { message: 'Ese usuario ya existe.' });
         db.prepare('INSERT INTO users (codigo_usuario, user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?, ?)')
@@ -863,3 +972,4 @@ function shutdown(signal: NodeJS.Signals): void {
 
 process.once('SIGTERM', shutdown);
 process.once('SIGINT', shutdown);
+

@@ -1,12 +1,18 @@
 import { dashboardView } from './dashboardView';
-import { showToast, showSupportModal, SEPARATOR_TYPE, generateWordSearchGrid } from '../shared/ui';
+import { showToast, showSupportModal, SEPARATOR_TYPE, generateWordSearchGrid, escapeHtml } from '../shared/ui';
 import { openUserManual } from '../shared/manual';
 
 function getYouTubeEmbedUrl(url) {
   if (!url) return '';
-  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-  const match = url.match(regExp);
-  return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : url;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const id = host === 'youtu.be' ? parsed.pathname.slice(1) :
+      ['youtube.com', 'www.youtube.com', 'm.youtube.com'].includes(host)
+        ? (parsed.pathname === '/watch' ? parsed.searchParams.get('v') : parsed.pathname.match(/^\/(?:embed|shorts)\/([^/]+)/)?.[1])
+        : null;
+    return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? `https://www.youtube-nocookie.com/embed/${id}` : '';
+  } catch { return ''; }
 }
 
 function shuffle(arr) {
@@ -65,10 +71,10 @@ function syncInProgress(exerciseId, answerData) {
 }
 
 function updateProgressUI(progresoPct, calificacionPct) {
-  const fill = document.querySelector('.course-progress-bar-fill');
+  const fill = document.querySelector('.course-progress-bar-fill') as HTMLProgressElement | null;
   const label = document.querySelector('.course-progress-label');
   const gradeValue = document.querySelector('.course-grade-value');
-  if (fill) fill.style.width = `${progresoPct}%`;
+  if (fill) fill.value = progresoPct;
   if (label) label.textContent = `${progresoPct}%`;
   if (gradeValue) gradeValue.textContent = `${calificacionPct}/100`;
 }
@@ -97,22 +103,22 @@ function renderSidebar(exercises) {
 
   list.innerHTML = exercises.map((ex) => {
     if (ex.type === SEPARATOR_TYPE) {
-      return `<div class="sidebar-separator"><span class="sidebar-separator-line"></span>${ex.title || 'Sección'}<span class="sidebar-separator-line"></span></div>`;
+      return `<div class="sidebar-separator"><span class="sidebar-separator-line"></span>${escapeHtml(ex.title || 'Sección')}<span class="sidebar-separator-line"></span></div>`;
     }
     if (isFileCardType(ex.type) || ex.type === 'Texto') {
       return `
-        <button type="button" class="sidebar-item sidebar-item-file" data-target="${ex.id}">
+        <button type="button" class="sidebar-item sidebar-item-file" data-target="${escapeHtml(ex.id)}">
           <span class="sidebar-item-icon sidebar-item-icon-file"></span>
-          <span class="sidebar-item-title">${ex.title}</span>
+          <span class="sidebar-item-title">${escapeHtml(ex.title)}</span>
         </button>
       `;
     }
     const state = progress[ex.id];
     const stateClass = state ? (state.correct ? 'sidebar-item-correct' : 'sidebar-item-incorrect') : 'sidebar-item-pending';
     return `
-      <button type="button" class="sidebar-item ${stateClass}" data-target="${ex.id}">
+      <button type="button" class="sidebar-item ${stateClass}" data-target="${escapeHtml(ex.id)}">
         <span class="sidebar-item-icon"></span>
-        <span class="sidebar-item-title">${ex.title}</span>
+        <span class="sidebar-item-title">${escapeHtml(ex.title)}</span>
       </button>
     `;
   }).join('');
@@ -126,7 +132,7 @@ function renderSidebar(exercises) {
 }
 
 function renderSeparator(ex) {
-  return `<div class="course-separator" data-exercise-id="${ex.id}"><h2>${ex.title || 'Sección'}</h2></div>`;
+  return `<div class="course-separator" data-exercise-id="${escapeHtml(ex.id)}"><h2>${escapeHtml(ex.title || 'Sección')}</h2></div>`;
 }
 
 function fileIconFor(mimeType, fileName) {
@@ -141,7 +147,7 @@ function fileIconFor(mimeType, fileName) {
 
 function renderTextCard(ex) {
   return `
-    <div class="exercise-card-view file-resource-card" data-exercise-id="${ex.id}">
+    <div class="exercise-card-view file-resource-card" data-exercise-id="${escapeHtml(ex.id)}">
       <div class="gform-accent"></div>
       <div class="exercise-card-body">
         <div class="card-top-bar">
@@ -149,15 +155,16 @@ function renderTextCard(ex) {
             <span class="top-bar-type">Material del curso</span>
           </div>
         </div>
-        <h3 class="exercise-main-title">${ex.title}</h3>
-        <div class="text-resource-content">${(ex.data?.content || '').split('\n').map((line) => `<p>${line || '&nbsp;'}</p>`).join('')}</div>
+        <h3 class="exercise-main-title">${escapeHtml(ex.title)}</h3>
+        <div class="text-resource-content">${(ex.data?.content || '').split('\n').map((line) => `<p>${escapeHtml(line) || '&nbsp;'}</p>`).join('')}</div>
       </div>
     </div>
   `;
 }
 
 function renderFileCard(ex) {
-  const fileUrl = ex.data?.fileUrl || '';
+  const requestedFileUrl = ex.data?.fileUrl || '';
+  const fileUrl = /^\/uploads\/[a-zA-Z0-9._-]{1,200}$/.test(requestedFileUrl) ? requestedFileUrl : '';
   const fileName = ex.data?.fileName || 'Archivo';
   const mimeType = ex.data?.mimeType || '';
   const isImage = mimeType.startsWith('image/');
@@ -169,18 +176,18 @@ function renderFileCard(ex) {
 
   let previewHtml = '';
   if (isImage) {
-    previewHtml = `<img src="${fileUrl}" class="file-resource-preview" alt="${fileName}" />`;
+    previewHtml = `<img src="${escapeHtml(fileUrl)}" class="file-resource-preview" alt="${escapeHtml(fileName)}" />`;
   } else if (isPdf) {
     previewHtml = `
       <div class="file-resource-pdf-wrap">
         <div class="file-resource-pdf-label">Vista previa</div>
-        <iframe src="${fileUrl}#toolbar=0&navpanes=0&statusbar=0&view=FitH" class="file-resource-pdf" title="${fileName}"></iframe>
+        <iframe src="${escapeHtml(fileUrl)}#toolbar=0&navpanes=0&statusbar=0&view=FitH" class="file-resource-pdf" title="${escapeHtml(fileName)}"></iframe>
       </div>
     `;
   }
 
   return `
-    <div class="exercise-card-view file-resource-card" data-exercise-id="${ex.id}">
+    <div class="exercise-card-view file-resource-card" data-exercise-id="${escapeHtml(ex.id)}">
       <div class="gform-accent"></div>
       <div class="exercise-card-body">
         <div class="card-top-bar">
@@ -188,15 +195,15 @@ function renderFileCard(ex) {
             <span class="top-bar-type">Material del curso</span>
           </div>
         </div>
-        <h3 class="exercise-main-title">${ex.title}</h3>
-        ${ex.prompt ? `<p class="exercise-instruction">${ex.prompt}</p>` : ''}
+        <h3 class="exercise-main-title">${escapeHtml(ex.title)}</h3>
+        ${ex.prompt ? `<p class="exercise-instruction">${escapeHtml(ex.prompt)}</p>` : ''}
         ${fileUrl ? `
           <div class="file-resource-box">
             <span class="file-resource-icon">${icon}</span>
-            <div class="file-resource-info"><strong>${fileName}</strong></div>
+            <div class="file-resource-info"><strong>${escapeHtml(fileName)}</strong></div>
             <div class="file-resource-actions">
               ${isOffice ? `<a href="${officeViewerUrl}" target="_blank" rel="noopener" class="btn ghost">Ver en línea</a>` : ''}
-              <a href="${fileUrl}" target="_blank" rel="noopener" class="btn-action-pink">${isImage || isPdf ? 'Ver / Descargar' : 'Descargar'}</a>
+              <a href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener" class="btn-action-pink">${isImage || isPdf ? 'Ver / Descargar' : 'Descargar'}</a>
             </div>
           </div>
           ${previewHtml}
@@ -220,11 +227,11 @@ function renderExerciseCard(ex) {
           <iframe src="${embedUrl}" allowfullscreen></iframe>
         </div>
       ` : ''}
-      <p class="exercise-instruction"><strong>${ex.data?.question || ex.prompt}</strong><span class="gform-required">*</span></p>
+      <p class="exercise-instruction"><strong>${escapeHtml(ex.data?.question || ex.prompt)}</strong><span class="gform-required">*</span></p>
       <div class="options-group" data-role="quiz-options">
         ${options.map((opt, i) => `
           <label class="pink-option-btn" data-optindex="${i}">
-            <input type="radio" name="quiz-${ex.id}" value="${i}"> <span>${opt || `Opción ${i + 1}`}</span>
+            <input type="radio" name="quiz-${escapeHtml(ex.id)}" value="${i}"> <span>${escapeHtml(opt || `Opción ${i + 1}`)}</span>
           </label>
         `).join('')}
       </div>
@@ -232,9 +239,9 @@ function renderExerciseCard(ex) {
       <button type="button" class="btn-action-pink" data-action="validate-quiz">Validar respuesta</button>
     `;
   } else if (ex.type === 'Completa la frase') {
-    const sentence = (ex.data?.sentence || '').replace(/___+/, '<span class="blank-marker">_____</span>');
+    const sentence = escapeHtml(ex.data?.sentence || '').replace(/___+/, '<span class="blank-marker">_____</span>');
     contentHtml = `
-      <p class="exercise-instruction"><strong>${sentence || ex.prompt}</strong><span class="gform-required">*</span></p>
+      <p class="exercise-instruction"><strong>${sentence || escapeHtml(ex.prompt)}</strong><span class="gform-required">*</span></p>
       <input type="text" class="gform-text-input" placeholder="Escribe tu respuesta" data-role="fill-input" />
       <div class="gform-feedback-slot"></div>
       <br/>
@@ -245,10 +252,10 @@ function renderExerciseCard(ex) {
     const targetWord = (ex.data?.palabraSecreta || 'ORATORIA').toUpperCase();
     const maxIntentos = ex.data?.maxIntentos || 6;
     contentHtml = `
-      <p class="exercise-subtitle">${ex.prompt || ''}</p>
-      <p class="exercise-instruction">Pista: ${ex.data?.pista || 'Sin pista'}</p>
+      <p class="exercise-subtitle">${escapeHtml(ex.prompt || '')}</p>
+      <p class="exercise-instruction">Pista: ${escapeHtml(ex.data?.pista || 'Sin pista')}</p>
       <p class="exercise-instruction">Intentos restantes: <strong data-role="attempts-left">${maxIntentos}</strong></p>
-      <div class="word-slashes" data-role="word-slashes" data-word="${targetWord}">
+      <div class="word-slashes" data-role="word-slashes" data-word="${escapeHtml(targetWord)}">
         ${targetWord.split('').map(() => `<div class="slash-slot"><div class="slash"></div></div>`).join('')}
       </div>
       <div class="letters-grid" data-role="letters-grid" data-max-attempts="${maxIntentos}">
@@ -264,11 +271,11 @@ function renderExerciseCard(ex) {
     const maxAttempts = ex.data?.maxAttempts ?? 1;
     const timeLimitMinutes = ex.data?.timeLimitMinutes ?? 5;
     contentHtml = `
-      <p class="exercise-subtitle">${ex.prompt || ''}</p>
-      <p class="exercise-instruction">Palabras: <strong data-role="pending-words">${words.join(', ') || 'N/A'}</strong></p>
+      <p class="exercise-subtitle">${escapeHtml(ex.prompt || '')}</p>
+      <p class="exercise-instruction">Palabras: <strong data-role="pending-words">${escapeHtml(words.join(', ') || 'N/A')}</strong></p>
       <p class="exercise-instruction">Encontradas: <span data-role="found-count">0</span>/${words.length} — Intentos fallidos permitidos: <strong data-role="attempts-left">${maxAttempts}</strong> — Tiempo: <strong data-role="time-left">${formatTime(timeLimitMinutes * 60)}</strong></p>
       <div class="timed-exercise-wrapper" data-role="timed-wrapper">
-        <div class="sopa-grid" role="group" aria-label="Tablero de sopa de letras" data-role="sopa-grid" data-words="${words.join(',')}" data-max-attempts="${maxAttempts}" data-time-limit="${timeLimitMinutes * 60}">
+        <div class="sopa-grid" role="group" aria-label="Tablero de sopa de letras" data-role="sopa-grid" data-words="${escapeHtml(words.join(','))}" data-max-attempts="${maxAttempts}" data-time-limit="${timeLimitMinutes * 60}">
           ${gridLetters.slice(0, size * size).map((l, i) => `<button type="button" class="sopa-cell" data-cellindex="${i}" aria-label="Fila ${Math.floor(i / size) + 1}, columna ${i % size + 1}, letra ${l}" tabindex="${i === 0 ? '0' : '-1'}" disabled>${l}</button>`).join('')}
         </div>
         <div class="gform-feedback-slot"></div>
@@ -284,16 +291,16 @@ function renderExerciseCard(ex) {
     const shuffledDefs = shuffle(items.map((it, i) => ({ text: it.definicion, i })));
     const maxAttempts = ex.data?.maxAttempts ?? 1;
     contentHtml = `
-      <p class="exercise-instruction">${ex.prompt || 'Relaciona cada concepto con su definición'}</p>
+      <p class="exercise-instruction">${escapeHtml(ex.prompt || 'Relaciona cada concepto con su definición')}</p>
       <p class="exercise-instruction">Intentos fallidos permitidos: <strong data-role="attempts-left">${maxAttempts}</strong></p>
       <div class="pairs-container" data-max-attempts="${maxAttempts}">
         <div>
           <h4>CONCEPTOS</h4>
-          ${items.map((item, i) => `<button type="button" class="pink-card-item" data-role="concepto" data-pairindex="${i}">${item.concepto}</button>`).join('')}
+          ${items.map((item, i) => `<button type="button" class="pink-card-item" data-role="concepto" data-pairindex="${i}">${escapeHtml(item.concepto)}</button>`).join('')}
         </div>
         <div>
           <h4>DEFINICIONES</h4>
-          ${shuffledDefs.map((d) => `<button type="button" class="pink-card-item" data-role="definicion" data-pairindex="${d.i}">${d.text}</button>`).join('')}
+          ${shuffledDefs.map((d) => `<button type="button" class="pink-card-item" data-role="definicion" data-pairindex="${d.i}">${escapeHtml(d.text)}</button>`).join('')}
         </div>
       </div>
       <div class="gform-feedback-slot"></div>
@@ -303,12 +310,12 @@ function renderExerciseCard(ex) {
     const shuffled = shuffle(pasos.map((texto, i) => ({ texto, originalIndex: i })));
     const maxAttempts = ex.data?.maxAttempts ?? 1;
     contentHtml = `
-      <p class="exercise-instruction">${ex.data?.pregunta || ex.prompt}</p>
+      <p class="exercise-instruction">${escapeHtml(ex.data?.pregunta || ex.prompt)}</p>
       <p class="exercise-instruction">Intentos permitidos: <strong data-role="attempts-left">${maxAttempts}</strong></p>
       <div class="causality-list" data-role="causality-list" data-max-attempts="${maxAttempts}">
         ${shuffled.map((p) => `
           <div class="causality-row" data-original-index="${p.originalIndex}">
-            <span>${p.texto}</span>
+            <span>${escapeHtml(p.texto)}</span>
             <div class="arrow-btn-group">
               <button type="button" class="arrow-btn" data-action="move-up">▲</button>
               <button type="button" class="arrow-btn" data-action="move-down">▼</button>
@@ -326,30 +333,30 @@ function renderExerciseCard(ex) {
       { value, pairId, uid: `${pairId}-b` }
     ])));
     contentHtml = `
-      <p class="exercise-subtitle">${ex.prompt}</p>
+      <p class="exercise-subtitle">${escapeHtml(ex.prompt)}</p>
       <div class="memorama-grid" data-role="memorama-grid" data-total-pairs="${conceptos.length}">
         ${deck.map((card) => `
-          <button type="button" class="memo-card" aria-label="Carta oculta" data-uid="${card.uid}" data-pairid="${card.pairId}" data-value="${card.value}" tabindex="${deck[0].uid === card.uid ? '0' : '-1'}">?</button>
+          <button type="button" class="memo-card" aria-label="Carta oculta" data-uid="${card.uid}" data-pairid="${card.pairId}" data-value="${escapeHtml(card.value)}" tabindex="${deck[0].uid === card.uid ? '0' : '-1'}">?</button>
         `).join('')}
       </div>
       <div class="gform-feedback-slot"></div>
     `;
   } else {
-    contentHtml = `<p class="exercise-instruction">${ex.prompt}</p>`;
+    contentHtml = `<p class="exercise-instruction">${escapeHtml(ex.prompt)}</p>`;
   }
 
   return `
-    <div class="exercise-card-view" data-exercise-id="${ex.id}">
+    <div class="exercise-card-view" data-exercise-id="${escapeHtml(ex.id)}">
       <div class="gform-accent"></div>
       <div class="exercise-card-body">
         <div class="card-top-bar">
           <div class="top-bar-left">
-            <span class="top-bar-type">${ex.type}</span>
+            <span class="top-bar-type">${escapeHtml(ex.type)}</span>
             <span class="top-bar-status status-progress">Sin responder</span>
           </div>
           <span class="top-bar-pts">${points} pts</span>
         </div>
-        <h3 class="exercise-main-title">${ex.title}</h3>
+        <h3 class="exercise-main-title">${escapeHtml(ex.title)}</h3>
         ${contentHtml}
       </div>
     </div>
@@ -361,7 +368,7 @@ function showFeedback(card, correct, correctText) {
   if (!slot) return;
   slot.innerHTML = `
     <p class="gform-feedback ${correct ? 'correct' : 'incorrect'}">
-      ${correct ? '✓ ¡Correcto!' : `✕ Incorrecto.${correctText ? ` Respuesta correcta: ${correctText}` : ''}`}
+      ${correct ? '✓ ¡Correcto!' : `✕ Incorrecto.${correctText ? ` Respuesta correcta: ${escapeHtml(correctText)}` : ''}`}
     </p>
   `;
 }
@@ -418,7 +425,7 @@ function applyHangmanAnswered(card, ex, answerData, correct) {
   });
 
   wordEl.querySelectorAll('.slash-slot').forEach((slot, i) => {
-    if (correct || guessed.has(word[i])) slot.innerHTML = `<strong>${word[i]}</strong>`;
+    if (correct || guessed.has(word[i])) slot.innerHTML = `<strong>${escapeHtml(word[i])}</strong>`;
   });
 
   const attemptsLeftEl = card.querySelector('[data-role="attempts-left"]');
@@ -454,13 +461,11 @@ function applyPairsAnswered(card, ex, answerData, correct) {
     const idx = Number(el.dataset.pairindex);
     if (matchedIndices.has(idx)) el.classList.add('matched');
     el.disabled = true;
-    el.style.pointerEvents = 'none';
   });
   card.querySelectorAll('[data-role="definicion"]').forEach((el) => {
     const idx = Number(el.dataset.pairindex);
     if (matchedIndices.has(idx)) el.classList.add('matched');
     el.disabled = true;
-    el.style.pointerEvents = 'none';
   });
   showFeedback(card, correct, null);
 }
@@ -489,7 +494,6 @@ function applyMemoramaAnswered(card) {
     c.textContent = c.dataset.value;
     c.disabled = true;
     c.setAttribute('aria-label', `Pareja encontrada: ${c.dataset.value}`);
-    c.style.pointerEvents = 'none';
   });
   showFeedback(card, true, null);
 }
@@ -519,7 +523,7 @@ function wireQuiz(card, ex, onDone) {
   let attemptsUsed = 0;
 
   btn.addEventListener('click', () => {
-    const checked = card.querySelector(`input[name="quiz-${ex.id}"]:checked`);
+    const checked = card.querySelector(`input[name="quiz-${CSS.escape(ex.id)}"]:checked`);
     if (!checked) { showToast('Selecciona una opción antes de validar.', 'error'); return; }
     const selectedIndex = Number(checked.value);
     const correctIndex = ex.data?.correctIndex ?? 0;
@@ -610,7 +614,7 @@ function wireHangman(card, ex, onDone) {
         revealed.add(letter);
         btn.classList.add('letter-hit');
         wordEl.querySelectorAll('.slash-slot').forEach((slot, i) => {
-          if (word[i] === letter) slot.innerHTML = `<strong>${letter}</strong>`;
+          if (word[i] === letter) slot.innerHTML = `<strong>${escapeHtml(letter)}</strong>`;
         });
       } else {
         attemptsLeft -= 1;
@@ -624,7 +628,7 @@ function wireHangman(card, ex, onDone) {
         grid.querySelectorAll('.letter-btn').forEach((b) => { b.disabled = true; });
         if (!won) {
           wordEl.querySelectorAll('.slash-slot').forEach((slot, i) => {
-            slot.innerHTML = `<strong>${word[i]}</strong>`;
+            slot.innerHTML = `<strong>${escapeHtml(word[i])}</strong>`;
           });
         }
         showFeedback(card, won, word);
@@ -975,14 +979,13 @@ function wireExercise(container, ex) {
 }
 
 export function courseView(session = {}) {
-  document.body.style.background = '';
   document.body.innerHTML = `
     <div class="screen-shell">
       <nav class="topbar">
         <div class="topbar-user">
-          <span class="topbar-pill">${session.user || 'Usuario'}</span>
-          <span class="topbar-role">${session.role || 'usuario'}</span>
-          <span class="topbar-id">ID: ${session.codigoUsuario || 'N/A'}</span>
+          <span class="topbar-pill">${escapeHtml(session.user || 'Usuario')}</span>
+          <span class="topbar-role">${escapeHtml(session.role || 'usuario')}</span>
+          <span class="topbar-id">ID: ${escapeHtml(session.codigoUsuario || 'N/A')}</span>
         </div>
         <div class="topbar-actions">
           <button id="openCourseMenu" class="btn ghost" type="button" aria-expanded="false" aria-controls="courseSidebar">Contenido</button>
@@ -1006,7 +1009,7 @@ export function courseView(session = {}) {
         <main class="course-view">
           <div class="course-progress">
             <span>Progreso</span>
-            <div class="course-progress-bar"><div class="course-progress-bar-fill" style="width:0%"></div></div>
+            <progress class="course-progress-bar-fill" max="100" value="0" aria-label="Progreso del curso"></progress>
             <span class="course-progress-label">0%</span>
           </div>
           <div class="course-grade-badge">Calificación actual: <strong class="course-grade-value">--</strong></div>
@@ -1229,3 +1232,4 @@ export function courseView(session = {}) {
   loadInitialData();
   setInterval(refreshLiveStatus, 12000);
 }
+
