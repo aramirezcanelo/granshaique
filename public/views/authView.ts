@@ -37,14 +37,12 @@ export function authView() {
               <input id="websiteField" name="website" type="text" tabindex="-1" autocomplete="off" />
             </div>
             <fieldset class="login-challenge">
-              <legend>Verificación de seguridad</legend>
-              <p id="challengePrompt" class="challenge-prompt">Cargando reto…</p>
+              <legend>Verificación automática</legend>
+              <p id="challengePrompt" class="challenge-prompt" role="status" aria-live="polite">Preparando protección…</p>
               <div class="challenge-answer-row">
-                <label class="sr-only" for="challengeAnswer">Respuesta al cálculo</label>
-                <input id="challengeAnswer" name="challengeAnswer" type="number" inputmode="numeric" min="0" max="99" step="1" placeholder="Tu respuesta" required aria-describedby="challengeHelp" />
                 <button class="btn ghost challenge-refresh" type="button" id="refreshChallengeBtn" aria-label="Obtener otro reto">Otro reto</button>
               </div>
-              <span class="challenge-help" id="challengeHelp">Resuelve el cálculo para continuar. El reto vence en 5 minutos.</span>
+              <span class="challenge-help" id="challengeHelp">Se verifica en este dispositivo; no enviamos datos a un servicio de CAPTCHA.</span>
             </fieldset>
             <div id="authMessage" class="auth-message"></div>
             <button class="btn primary" type="submit">Accede</button>
@@ -65,11 +63,13 @@ export function authView() {
   const passInput = document.getElementById('authPassword');
   const manualBtn = document.getElementById('manualBtn');
   const challengePrompt = document.getElementById('challengePrompt');
-  const challengeAnswer = document.getElementById('challengeAnswer');
   const refreshChallengeBtn = document.getElementById('refreshChallengeBtn');
   const websiteField = document.getElementById('websiteField');
   const registrationStatusMessage = document.getElementById('registrationStatusMessage');
   let challengeLoaded = false;
+  let challengeSalt = '';
+  let challengeDifficulty = 0;
+  let submitting = false;
 
   const loadRegistrationStatus = async () => {
     registerBtn.disabled = true;
@@ -101,9 +101,9 @@ export function authView() {
 
   const loadChallenge = async () => {
     challengeLoaded = false;
-    challengePrompt.textContent = 'Cargando reto…';
-    challengeAnswer.value = '';
-    challengeAnswer.disabled = true;
+    challengeSalt = '';
+    challengeDifficulty = 0;
+    challengePrompt.textContent = 'Preparando protección…';
     refreshChallengeBtn.disabled = true;
     if (location.protocol === 'file:') {
       challengePrompt.textContent = 'El reto de seguridad está disponible al iniciar el servidor.';
@@ -112,13 +112,13 @@ export function authView() {
     try {
       const response = await fetch('/api/login-challenge', { credentials: 'same-origin', cache: 'no-store' });
       const data = await response.json();
-      if (!response.ok || typeof data.prompt !== 'string') throw new Error('Challenge unavailable');
+      if (!response.ok || typeof data.prompt !== 'string' || !/^[a-f0-9]{48}$/.test(data.salt) || !Number.isInteger(data.difficulty) || data.difficulty < 12 || data.difficulty > 22) throw new Error('Challenge unavailable');
+      challengeSalt = data.salt;
+      challengeDifficulty = data.difficulty;
       challengePrompt.textContent = data.prompt;
       challengeLoaded = true;
-      challengeAnswer.disabled = false;
-      challengeAnswer.focus({ preventScroll: true });
     } catch {
-      challengePrompt.textContent = 'No se pudo cargar el reto. Pulsa “Otro reto” para reintentar.';
+      challengePrompt.textContent = 'No se pudo preparar la protección. Pulsa “Otro reto” para reintentar.';
     } finally {
       refreshChallengeBtn.disabled = false;
     }
@@ -159,18 +159,24 @@ export function authView() {
       showMessage('Espera a que cargue el reto de seguridad o pulsa “Otro reto”.', false);
       return;
     }
-    if (!challengeAnswer.value.trim()) {
-      showMessage('Resuelve el reto de seguridad para continuar.', false);
-      challengeAnswer.focus();
-      return;
-    }
+    if (submitting) return;
 
+    submitting = true;
+    const submitButton = form.querySelector('[type="submit"]');
+    submitButton.disabled = true;
+    registerBtn.disabled = true;
+    let proofCompleted = false;
     try {
+      challengePrompt.textContent = 'Comprobando la solicitud en este dispositivo…';
+      const challengeProof = await solveChallengeProof(challengeSalt, challengeDifficulty, (attempts) => {
+        challengePrompt.textContent = `Verificación local en curso… ${attempts.toLocaleString()} comprobaciones`;
+      });
+      proofCompleted = true;
       const res = await fetch(`/api/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ user, pass, challengeAnswer: challengeAnswer.value, website: websiteField.value })
+        body: JSON.stringify({ user, pass, challengeProof, website: websiteField.value })
       });
 
       const data = await res.json();
@@ -198,8 +204,15 @@ export function authView() {
         }
       }
       location.reload();
-    } catch {
-      showMessage('No se pudo conectar con el servidor. Inícialo con "npm start" y abre http://localhost:8080.', false);
+    } catch (error) {
+      showMessage(!proofCompleted
+        ? error instanceof Error ? error.message : 'No se pudo completar la verificación de seguridad.'
+        : 'No se pudo conectar con el servidor. Inícialo con "npm start" y abre http://localhost:8080.', false);
+      if (!proofCompleted) challengePrompt.textContent = 'No se pudo completar la verificación. Pulsa “Otro reto” para intentarlo de nuevo.';
+    } finally {
+      submitting = false;
+      submitButton.disabled = false;
+      if (mode === 'register') await loadRegistrationStatus();
     }
   };
 
@@ -213,4 +226,26 @@ export function authView() {
     passInput.autocomplete = 'new-password';
     submit('register');
   });
+}
+
+async function solveChallengeProof(salt, difficulty, onProgress) {
+  if (!globalThis.crypto?.subtle) throw new Error('Se requiere un navegador moderno para la verificación segura.');
+  const encoder = new TextEncoder();
+  const matchesDifficulty = (digest) => {
+    const bytes = new Uint8Array(digest);
+    for (let bit = 0; bit < difficulty; bit += 1) {
+      if ((bytes[Math.floor(bit / 8)] & (1 << (7 - (bit % 8)))) !== 0) return false;
+    }
+    return true;
+  };
+
+  for (let candidate = 0; candidate < 2 ** 32; candidate += 1) {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', encoder.encode(`${salt}:${candidate}`));
+    if (matchesDifficulty(digest)) return String(candidate);
+    if (candidate > 0 && candidate % 2048 === 0) {
+      onProgress(candidate);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+  throw new Error('No se pudo completar la verificación.');
 }

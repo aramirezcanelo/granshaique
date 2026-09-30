@@ -382,7 +382,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 .login-challenge legend { padding-inline: 5px; color: var(--ink); font-size: .82rem; font-weight: 700; }
 .challenge-prompt { margin: 0; color: var(--primary-dark); font-size: 1.05rem; font-weight: 700; }
-.challenge-answer-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.challenge-answer-row { display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px; }
 .challenge-answer-row input { min-width: 0; padding: 11px 12px; border-radius: 10px; }
 .challenge-refresh { min-height: 44px; padding-inline: 12px; font-size: .78rem; }
 .challenge-help { color: var(--muted); font-size: .74rem; line-height: 1.4; }

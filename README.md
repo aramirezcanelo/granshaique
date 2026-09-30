@@ -41,6 +41,8 @@ En una instalación nueva, configura `ADMIN_USER` y `ADMIN_PASSWORD` mediante el
 
 Para desarrollo local, `npm start` lee `.env` si existe. Si la base no tiene ningún admin, crea automáticamente el usuario indicado por `ADMIN_USER`; cuando no se indica, usa `Ako` fuera de producción. Configura `ADMIN_PASSWORD` con una contraseña de al menos 10 caracteres en `.env`. En producción se exigen ambos valores desde el administrador de secretos de la plataforma.
 
+El inicio de sesión y el registro público incorporan una prueba de trabajo SHA-256 de un solo uso, calculada en el navegador, además de límites de intentos por IP y un campo trampa para bots. La verificación no usa CAPTCHA de terceros; tampoco confirma identidad, así que habilita el registro público solo cuando corresponda.
+
 Cada cuenta recibe un identificador público diario compacto en formato `AAMMDDNN`, por ejemplo `26092901`. El contador se guarda por fecha y continúa aunque se eliminen cuentas. Los IDs antiguos con barras se convierten al nuevo formato al iniciar el servidor; la clave primaria interna sigue oculta y mantiene los vínculos existentes.
 
 ## Control de inscripciones

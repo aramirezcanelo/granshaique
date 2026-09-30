@@ -6,7 +6,7 @@ Fecha: 2026-09-29. Alcance: código fuente, configuración, dependencias bloquea
 
 La contraseña temporal en texto claro se quitó del `.env` local, que está ignorado por Git, y se reinició el servidor para descargarla de su entorno. La base local contiene dos cuentas admin y ambas tienen contraseñas con hash `scrypt`; por eso retirar la variable no cambia las credenciales guardadas ni invalida la contraseña anterior. Si se necesita revocarla, hay que cambiar la contraseña de la cuenta.
 
-La aplicación tiene controles útiles para un proyecto pequeño: contraseñas con hash, autorización admin en rutas de gestión, cookies de sesión protegidas, validación del origen en producción, consultas SQL parametrizadas y límites de tamaño. Se añadieron reto de un solo uso y honeypot a las altas públicas, límite de 10 intentos por IP cada 15 minutos y escape del contenido editable antes de insertarlo en plantillas HTML. El reto de suma sigue siendo fácil de automatizar; el rate limit en memoria y las operaciones síncronas también limitan cuánto tráfico puede manejar una sola instancia.
+La aplicación tiene controles útiles para un proyecto pequeño: contraseñas con hash, autorización admin en rutas de gestión, cookies de sesión protegidas, validación del origen en producción, consultas SQL parametrizadas y límites de tamaño. Se añadió una prueba de trabajo SHA-256 de un solo uso, calculada localmente, junto con honeypot y límite de 10 intentos por IP cada 15 minutos para las altas públicas; los contenidos editables también se escapan antes de insertarse en plantillas HTML. El rate limit vive en memoria y la prueba de trabajo aumenta el costo de la automatización sin identificar a una persona; estas medidas no sustituyen verificación de correo ni un proveedor anti-bot administrado.
 
 ## Controles comprobados
 
@@ -16,7 +16,7 @@ La aplicación tiene controles útiles para un proyecto pequeño: contraseñas c
 - En la base local: 2 administradores, ambos con hash `scrypt`; 0 contraseñas sin hash. Las contraseñas nuevas usan salt aleatorio y comparación en tiempo constante. Sigue existiendo una ruta de compatibilidad que convierte contraseñas antiguas al iniciar sesión; la base de producción no se inspeccionó.
 - Las consultas que usan datos de usuario pasan valores como parámetros SQLite. El código no define un ORM; los esquemas e interfaces se mantienen manualmente.
 - Los endpoints de usuarios, cursos, archivos y ajustes administrativos verifican sesión y rol admin. El progreso requiere sesión y se vincula al usuario de la sesión.
-- Las altas públicas necesitan el reto de un solo uso ligado a cookie HttpOnly, el honeypot vacío y no superar 10 intentos por IP cada 15 minutos. La IP reenviada se considera solo cuando `RENDER=true`, y se valida como dirección IPv4 o IPv6. Las cuentas creadas desde una sesión admin no consumen el límite público.
+- El login y las altas públicas requieren una prueba de trabajo SHA-256 de 16 bits, ligada a un reto de un solo uso en cookie HttpOnly y con vencimiento de cinco minutos. Las altas públicas también requieren el honeypot vacío y no superar 10 intentos por IP cada 15 minutos. La IP reenviada se considera solo cuando `RENDER=true`, y se valida como dirección IPv4 o IPv6. Las cuentas creadas desde una sesión admin no consumen el límite público.
 - Los textos de ejercicios, nombres, instrucciones, archivos y valores de usuarios se escapan en las plantillas dinámicas. Las vistas previas de archivo aceptan solo rutas locales bajo `/uploads/`; las URL de video se convierten a dominios YouTube permitidos y se rechazan si no se reconocen.
 - La cookie de sesión es `HttpOnly` y `SameSite=Strict`; `Secure` se añade en producción. Las sesiones usan tokens aleatorios de 256 bits, duran siete días y actualmente se guardan en memoria.
 - En producción se exige `Origin` del mismo host en las mutaciones. No hay CORS abierto. La política CSP permite scripts y estilos locales sin `unsafe-inline`; también están configurados HSTS en producción, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` y `Permissions-Policy`.
@@ -28,7 +28,7 @@ La aplicación tiene controles útiles para un proyecto pequeño: contraseñas c
 
 ### Prioridad alta
 
-1. **La verificación anti-bot es débil.** El reto de suma se resuelve con facilidad mediante automatización y no verifica correo ni identidad. Honeypot y límite por IP reducen registros automáticos simples; si se prevé exposición a spam, conviene agregar un proveedor CAPTCHA accesible o una prueba de trabajo y verificación de correo. No abras las inscripciones públicamente sin asumir este riesgo.
+1. **La verificación anti-bot no confirma identidad.** La prueba de trabajo eleva el costo por intento, pero un bot puede calcularla y no verifica correo ni identidad. Para inscripciones expuestas a spam, conviene sumar verificación de correo o un proveedor CAPTCHA accesible.
 2. **Las defensas por IP viven en memoria.** Los límites se reinician al reiniciar el proceso y cada instancia mantiene su propio contador. Si Render usa varias instancias o reinicia el servicio, usa un almacén compartido o limita el escalado. Revisa que el servicio de Render tenga `RENDER=true`; fuera de Render no se confía en `X-Forwarded-For`.
 
 ### Prioridad media

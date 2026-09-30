@@ -16,7 +16,7 @@ type JsonHandler = (body: JsonObject) => void;
 const PORT = process.env.PORT || 8080;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_JSON_BYTES = 1_000_000;
-const SERVER_BUILD = 'csp-inline-style-fix-2026-09-29';
+const SERVER_BUILD = 'dashboard-manual-auth-pow-2026-09-29';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Compiled output lives in dist/server; keep static assets and persistent data rooted at the project.
 const root = path.resolve(__dirname, '..', '..');
@@ -190,12 +190,13 @@ const assertValidLogin = (user: unknown, pass: unknown): string | null => {
 const sessions = new Map<string, Session>();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const registrationAttempts = new Map<string, { count: number; resetAt: number }>();
-type LoginChallenge = { answer: number; expiresAt: number };
+type LoginChallenge = { salt: string; expiresAt: number };
 const loginChallenges = new Map<string, LoginChallenge>();
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 10;
 const REGISTRATION_MAX_ATTEMPTS = 10;
 const LOGIN_CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const LOGIN_CHALLENGE_DIFFICULTY = 16;
 function isLoginRateLimited(ip: string): boolean {
   const now = Date.now();
   for (const [key, attempt] of loginAttempts) {
@@ -241,26 +242,29 @@ const parseCookies = (header = ''): Record<string, string> => Object.fromEntries
   const index = part.indexOf('=');
   return index < 0 ? [] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1))];
 }).filter((entry) => entry.length));
-function createLoginChallenge(): { id: string; prompt: string; expiresAt: number } {
+function createLoginChallenge(): { id: string; salt: string; difficulty: number; prompt: string; expiresAt: number } {
   const now = Date.now();
   for (const [id, challenge] of loginChallenges) {
     if (challenge.expiresAt <= now) loginChallenges.delete(id);
   }
-  const left = crypto.randomInt(2, 10);
-  const right = crypto.randomInt(1, 10);
+  while (loginChallenges.size >= 5_000) {
+    const oldest = loginChallenges.keys().next().value;
+    if (!oldest) break;
+    loginChallenges.delete(oldest);
+  }
   const id = crypto.randomBytes(24).toString('hex');
+  const salt = crypto.randomBytes(24).toString('hex');
   const expiresAt = now + LOGIN_CHALLENGE_TTL_MS;
-  loginChallenges.set(id, { answer: left + right, expiresAt });
-  return { id, prompt: `¿Cuánto es ${left} + ${right}?`, expiresAt };
+  loginChallenges.set(id, { salt, expiresAt });
+  return { id, salt, difficulty: LOGIN_CHALLENGE_DIFFICULTY, prompt: 'Verificación automática lista.', expiresAt };
 }
-function consumeLoginChallenge(id: unknown, answer: unknown): boolean {
-  if (typeof id !== 'string' || !/^[a-f0-9]{48}$/.test(id)) return false;
+function consumeLoginChallenge(id: unknown, proof: unknown): boolean {
+  if (typeof id !== 'string' || !/^[a-f0-9]{48}$/.test(id) || typeof proof !== 'string' || !/^\d{1,10}$/.test(proof)) return false;
   const challenge = loginChallenges.get(id);
   loginChallenges.delete(id);
   if (!challenge || challenge.expiresAt <= Date.now()) return false;
-  if (typeof answer !== 'string' && typeof answer !== 'number') return false;
-  const normalizedAnswer = String(answer).trim();
-  return /^\d{1,2}$/.test(normalizedAnswer) && Number(normalizedAnswer) === challenge.answer;
+  const digest = crypto.createHash('sha256').update(`${challenge.salt}:${proof}`).digest();
+  return digest[0] === 0 && digest[1] === 0;
 }
 const getSessionUser = (req: IncomingMessage): PublicUserRow | null => {
   const token = parseCookies(req.headers.cookie || '').session;
@@ -416,7 +420,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const secure = IS_PRODUCTION ? '; Secure' : '';
     res.setHeader('Set-Cookie', `login_challenge=${challenge.id}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=300${secure}`);
     res.setHeader('Cache-Control', 'no-store, private');
-    sendJson(res, 200, { prompt: challenge.prompt, expiresAt: challenge.expiresAt });
+    sendJson(res, 200, { prompt: challenge.prompt, salt: challenge.salt, difficulty: challenge.difficulty, expiresAt: challenge.expiresAt });
     return;
   }
 
@@ -836,7 +840,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 
   if (req.method === 'POST' && (req.url === '/api/register' || req.url === '/api/login')) {
-    readJson(req, res, ({ user, pass, rol, challengeAnswer, website }) => {
+    readJson(req, res, ({ user, pass, rol, challengeProof, website }) => {
       if (typeof user !== 'string' || typeof pass !== 'string') return sendJson(res, 400, { message: 'Faltan datos para acceder.' });
       const ip = getClientIp(req);
       const requester = req.url === '/api/register' ? getSessionUser(req) : null;
@@ -848,9 +852,9 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
           recordFailedLogin(ip);
           return sendJson(res, 400, { message: 'No se pudo validar el acceso. Actualiza el reto e inténtalo de nuevo.' });
         }
-        if (!consumeLoginChallenge(cookieChallengeId, challengeAnswer)) {
+        if (!consumeLoginChallenge(cookieChallengeId, challengeProof)) {
           recordFailedLogin(ip);
-          return sendJson(res, 400, { message: 'Resuelve el reto antes de acceder. Te mostramos uno nuevo.' });
+          return sendJson(res, 400, { message: 'No se completó la verificación. Actualiza el reto e inténtalo de nuevo.' });
         }
       }
       if (req.url === '/api/register' && (!requester || requester.rol !== 'admin')) {
@@ -860,7 +864,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
         const cookieChallengeId = cookies.login_challenge;
         res.setHeader('Set-Cookie', `login_challenge=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
         if (typeof website === 'string' && website.trim()) return sendJson(res, 400, { message: 'No se pudo validar el registro. Actualiza el reto e inténtalo de nuevo.' });
-        if (!consumeLoginChallenge(cookieChallengeId, challengeAnswer)) return sendJson(res, 400, { message: 'Resuelve el reto antes de registrarte. Te mostramos uno nuevo.' });
+        if (!consumeLoginChallenge(cookieChallengeId, challengeProof)) return sendJson(res, 400, { message: 'No se completó la verificación. Actualiza el reto e inténtalo de nuevo.' });
       }
       if (req.url === '/api/login' && isLoginRateLimited(ip)) return sendJson(res, 429, { message: 'Demasiados intentos. Espera 15 minutos e inténtalo de nuevo.' });
       const validationError = req.url === '/api/login' ? assertValidLogin(user, pass) : assertValidCredentials(user, pass);
