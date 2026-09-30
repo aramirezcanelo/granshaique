@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Manual visual de uso de Gran Chaique para alumnos y administradores.">
   <title>Manual de usuario · Gran Chaique</title>
-  <link rel="stylesheet" href="../public/static/manual.css?v=6">
+  <link rel="stylesheet" href="../public/static/manual.css?v=7">
 </head>
 <body>
 <header class="hero"><div class="wrap">
@@ -31,17 +31,26 @@
       <div class="grid2"><article class="panel"><h3>Quizzes y respuestas</h3><p>Marca una opción o escribe tu respuesta. Pulsa <b>Validar respuesta</b> para registrar el resultado. Sigue las instrucciones si hay intentos limitados.</p></article><article class="panel"><h3>Materiales</h3><p>Abre textos, imágenes y archivos desde el menú lateral. Algunos documentos o videos usan servicios externos y necesitan conexión a internet.</p></article><article class="panel"><h3>Progreso guardado</h3><p>Las respuestas se guardan en el servidor. Espera el mensaje de confirmación antes de cerrar o actualizar la página.</p></article><article class="panel"><h3>Soporte</h3><p>El botón <b>Soporte</b> prepara un correo con el asunto y el mensaje que escribas. Revisa destinatario y contenido antes de enviarlo.</p></article></div>
     </section>
     <section class="section" id="admin"><h2>4. Herramientas de administrador</h2><p class="lead">Pulsa <b>Dashboard</b> en la barra superior. El panel lateral real reúne el control de cursos, usuarios e inscripciones; usa el botón central para alternar entre las dos gestiones.</p>
-      <div class="admin-dashboard-shot" role="img" aria-label="Vista ilustrativa del Dashboard real en Gestión de usuarios, con encabezado, alternador de gestión, control de inscripciones públicas y tabla de cuentas.">
-        <div class="admin-app-backdrop"><div class="admin-app-topbar"><b>Gran Chaique</b><span>Curso comunitario</span></div><div class="admin-app-card"><small>CURSO</small><b>Actividades disponibles</b><span class="admin-app-line"></span><span class="admin-app-line short"></span></div></div>
-        <div class="admin-real-panel">
+      <div class="admin-dashboard-shot">
+        <article class="admin-real-panel" aria-label="Dashboard real: Gestión de usuarios">
           <div class="admin-real-heading"><div><small>Panel</small><b>Dashboard</b></div><span class="admin-close-demo">✕</span></div>
           <div class="admin-real-toolbar"><span class="admin-refresh-demo">↻</span><span class="admin-switch-demo"><b>Gestión de usuarios</b><i>⇆</i></span></div>
-          <div class="admin-registration-demo"><div><small>ACCESO COMUNITARIO</small><b>Inscripciones públicas</b><span class="admin-open-demo">● Abiertas · las personas pueden registrarse</span><em>Al cerrar, nadie podrá crear una cuenta desde la pantalla de acceso.</em></div><span class="admin-close-action-demo">Cerrar inscripciones</span></div>
+          <div class="admin-registration-demo"><div><small>ACCESO COMUNITARIO</small><b>Inscripciones públicas</b><span class="admin-closed-demo">● Cerradas · no se aceptan cuentas nuevas</span><em>Al cerrar, nadie podrá crear una cuenta desde la pantalla de acceso.</em></div><span class="admin-open-action-demo">Abrir inscripciones</span></div>
           <div class="admin-user-tools-demo"><span>Buscar por ID o usuario...</span><b>+ Usuario</b></div>
-          <div class="admin-table-demo"><div class="admin-table-head"><b>Usuario</b><b>Progreso</b><b>Calificación</b><b>Rol</b><b>ID de usuario</b><b>Acciones</b></div><div class="admin-table-row"><span>Alex</span><span>80%</span><span>92/100</span><span>usuario</span><span>26092901</span><i>Guardar　Eliminar</i></div><div class="admin-table-row"><span>Ako</span><span>—</span><span>—</span><span>admin</span><span>26092902</span><i>Guardar　Eliminar</i></div></div>
-        </div>
+          <div class="admin-table-demo"><div class="admin-table-head"><b>Usuario</b><b>Contraseña</b><b>Progreso</b><b>Calificación</b><b>Rol</b><b>ID de usuario</b><b>Acciones</b></div><div class="admin-table-row"><span>Usuario</span><span>Dejar vacío</span><span>80</span><span>92/100</span><span>usuario</span><span>26092901</span><i>Guardar　Eliminar</i></div><div class="admin-table-row"><span>Administración</span><span>Dejar vacío</span><span>—</span><span>—</span><span>admin</span><span>26092902</span><i>Guardar　Eliminar</i></div></div>
+        </article>
+        <article class="admin-real-panel admin-course-panel" aria-label="Dashboard real: Gestión de cursos">
+          <div class="admin-real-heading"><div><small>Panel</small><b>Dashboard</b></div><span class="admin-close-demo">✕</span></div>
+          <div class="admin-real-toolbar"><span class="admin-refresh-demo">↻</span><span class="admin-switch-demo"><b>Gestión de cursos</b><i>⇆</i></span></div>
+          <div class="admin-course-toolbar"><span>↕ Ordenar ejercicios</span></div>
+          <h3 class="admin-course-title">Selecciona un tipo de ejercicio</h3>
+          <div class="admin-exercise-grid"><span>Quizz conTexto</span><span>Quizz con Video</span><span>Memorama</span><span>Pares</span><span>Causalidad</span><span>Ahorcado</span><span>Completa la frase</span><span>Sopa de letras</span></div>
+          <h3 class="admin-course-title admin-other-title">Otros</h3>
+          <p class="admin-course-hint">Material de apoyo que no se califica: texto, imágenes, documentos y presentaciones.</p>
+          <div class="admin-exercise-grid admin-other-grid"><span>Texto</span><span>Imagen</span><span>Documento</span><span>Presentación</span></div>
+        </article>
       </div>
-      <p class="dashboard-caption">Representación del panel lateral que aparece sobre la página del curso. Los nombres y datos de la tabla son de ejemplo.</p>
+      <p class="dashboard-caption">Ambas vistas reproducen el panel real. La tabla usa cuentas e identificadores ficticios.</p>
       <h3 class="subhead">Crear, ordenar y eliminar contenido</h3><ol class="checklist"><li>En <b>Gestión de cursos</b>, elige un tipo de ejercicio o material.</li><li>Completa el título, las instrucciones y las opciones necesarias.</li><li>Para adjuntar un archivo, selecciónalo y espera a que termine la carga.</li><li>Pulsa <b>Publicar</b> o <b>Guardar</b>. Los ejercicios se muestran en el orden configurado.</li><li>En <b>Ordenar ejercicios</b>, usa las flechas o arrastra el control para cambiar posiciones.</li><li>Marca las casillas junto a varios ejercicios y pulsa <b>Eliminar seleccionados</b>. Los separadores se eliminan uno por uno.</li></ol>
       <h3 class="subhead">Abrir o cerrar inscripciones</h3><p>Abre el <b>Dashboard</b> y selecciona <b>Gestión de usuarios</b>. En la parte superior de esa vista aparece la tarjeta destacada <b>Inscripciones públicas</b>, con el estado actual y el botón correspondiente. Pulsa <b>Abrir inscripciones</b> para permitir nuevas cuentas desde la pantalla de acceso; pulsa <b>Cerrar inscripciones</b> para detenerlas. El cambio se guarda en el servidor y se refleja automáticamente en las pantallas de acceso abiertas. La administración puede seguir creando usuarios desde esta vista aunque las inscripciones públicas estén cerradas.</p>
       <div class="note gold"><b>Antes de eliminar</b><p>La eliminación de ejercicios o usuarios no se puede deshacer desde la interfaz. Confirma el elemento correcto y conserva respaldos operativos de la base de datos y los archivos.</p></div>
