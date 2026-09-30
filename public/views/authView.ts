@@ -40,7 +40,7 @@ export function authView() {
               <legend>Verificación automática</legend>
               <p id="challengePrompt" class="challenge-prompt" role="status" aria-live="polite">Preparando protección…</p>
               <div class="challenge-answer-row">
-                <button class="btn ghost challenge-refresh" type="button" id="refreshChallengeBtn" aria-label="Obtener otro reto">Otro reto</button>
+                <button class="btn ghost challenge-refresh" type="button" id="refreshChallengeBtn" aria-label="Reintentar verificación" hidden>Reintentar</button>
               </div>
               <span class="challenge-help" id="challengeHelp">Se verifica en este dispositivo; no enviamos datos a un servicio de CAPTCHA.</span>
             </fieldset>
@@ -104,9 +104,11 @@ export function authView() {
     challengeSalt = '';
     challengeDifficulty = 0;
     challengePrompt.textContent = 'Preparando protección…';
+    refreshChallengeBtn.hidden = true;
     refreshChallengeBtn.disabled = true;
     if (location.protocol === 'file:') {
       challengePrompt.textContent = 'El reto de seguridad está disponible al iniciar el servidor.';
+      refreshChallengeBtn.disabled = false;
       return;
     }
     try {
@@ -118,7 +120,8 @@ export function authView() {
       challengePrompt.textContent = data.prompt;
       challengeLoaded = true;
     } catch {
-      challengePrompt.textContent = 'No se pudo preparar la protección. Pulsa “Otro reto” para reintentar.';
+      challengePrompt.textContent = 'No se pudo preparar la protección. Puedes reintentar la verificación.';
+      refreshChallengeBtn.hidden = false;
     } finally {
       refreshChallengeBtn.disabled = false;
     }
@@ -156,7 +159,7 @@ export function authView() {
       return;
     }
     if (!challengeLoaded) {
-      showMessage('Espera a que cargue el reto de seguridad o pulsa “Otro reto”.', false);
+      showMessage('Espera a que cargue la verificación de seguridad.', false);
       return;
     }
     if (submitting) return;
@@ -208,7 +211,10 @@ export function authView() {
       showMessage(!proofCompleted
         ? error instanceof Error ? error.message : 'No se pudo completar la verificación de seguridad.'
         : 'No se pudo conectar con el servidor. Inícialo con "npm start" y abre http://localhost:8080.', false);
-      if (!proofCompleted) challengePrompt.textContent = 'No se pudo completar la verificación. Pulsa “Otro reto” para intentarlo de nuevo.';
+      if (!proofCompleted) {
+        challengePrompt.textContent = 'No se pudo completar la verificación. Puedes reintentar.';
+        refreshChallengeBtn.hidden = false;
+      }
     } finally {
       submitting = false;
       submitButton.disabled = false;

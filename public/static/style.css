@@ -385,6 +385,7 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .challenge-answer-row { display: grid; grid-template-columns: 1fr; align-items: center; gap: 8px; }
 .challenge-answer-row input { min-width: 0; padding: 11px 12px; border-radius: 10px; }
 .challenge-refresh { min-height: 44px; padding-inline: 12px; font-size: .78rem; }
+.challenge-refresh[hidden] { display: none; }
 .challenge-help { color: var(--muted); font-size: .74rem; line-height: 1.4; }
 .login-honeypot { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip-path: inset(50%) !important; white-space: nowrap !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
