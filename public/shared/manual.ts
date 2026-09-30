@@ -15,10 +15,7 @@ export function openUserManual(): void {
   dialog.className = 'manual-dialog';
   dialog.setAttribute('aria-label', 'Manual de usuario');
   dialog.innerHTML = `
-    <div class="manual-dialog-heading">
-      <strong>Manual de usuario</strong>
-      <button class="btn ghost" type="button" data-close-manual aria-label="Cerrar manual">Cerrar</button>
-    </div>
+    <button class="manual-close" type="button" data-close-manual aria-label="Cerrar manual" title="Cerrar manual">×</button>
     <iframe title="Manual de usuario y administración" src="/docs/manual.html"></iframe>
   `;
   dialog.querySelector('[data-close-manual]')?.addEventListener('click', () => dialog.close());
