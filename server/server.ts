@@ -16,7 +16,7 @@ type JsonHandler = (body: JsonObject) => void;
 const PORT = process.env.PORT || 8080;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_JSON_BYTES = 1_000_000;
-const SERVER_BUILD = 'privacy-session-consent-v1';
+const SERVER_BUILD = 'glass-privacy-page-v2';
 const PRIVACY_NOTICE_VERSION = 'v1';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Compiled output lives in dist/server; keep static assets and persistent data rooted at the project.
@@ -926,6 +926,8 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   const isPublicFile = filePath === path.join(root, 'index.html')
     || filePath === path.join(root, 'dist', 'client.js')
     || filePath === path.join(root, 'docs', 'manual.html')
+    || filePath === path.join(root, 'docs', 'privacy.html')
+    || filePath === path.join(root, 'docs', 'privacy.css')
     || isWithin(publicDir)
     || isWithin(uploadsDirPath);
 
