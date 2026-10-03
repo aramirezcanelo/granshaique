@@ -44,6 +44,10 @@ export function authView() {
               </div>
               <span class="challenge-help" id="challengeHelp">Se verifica en este dispositivo; no enviamos datos a un servicio de CAPTCHA.</span>
             </fieldset>
+            <label class="privacy-consent" for="privacyConsent">
+              <input id="privacyConsent" type="checkbox" required />
+              <span>He leído el <a href="./docs/privacy.html" target="_blank" rel="noopener">Aviso de privacidad</a> y acepto el uso de la cookie necesaria para mantener mi sesión (7 días).</span>
+            </label>
             <div id="authMessage" class="auth-message"></div>
             <button class="btn primary" type="submit">Accede</button>
             <button class="btn ghost" type="button" id="registerBtn" disabled>Consultando inscripciones…</button>
@@ -64,12 +68,20 @@ export function authView() {
   const manualBtn = document.getElementById('manualBtn');
   const challengePrompt = document.getElementById('challengePrompt');
   const refreshChallengeBtn = document.getElementById('refreshChallengeBtn');
+  const privacyConsent = document.getElementById('privacyConsent');
   const websiteField = document.getElementById('websiteField');
   const registrationStatusMessage = document.getElementById('registrationStatusMessage');
   let challengeLoaded = false;
   let challengeSalt = '';
   let challengeDifficulty = 0;
   let submitting = false;
+  const privacyNoticeVersion = 'v1';
+
+  try {
+    privacyConsent.checked = localStorage.getItem('privacyNoticeAccepted') === privacyNoticeVersion;
+  } catch {
+    // Storage can be disabled; the user can still accept for this visit.
+  }
 
   const loadRegistrationStatus = async () => {
     registerBtn.disabled = true;
@@ -158,6 +170,11 @@ export function authView() {
       showMessage('Completa usuario y contraseña.', false);
       return;
     }
+    if (!privacyConsent.checked) {
+      showMessage('Lee el Aviso de privacidad y acepta la cookie de sesión para continuar.', false);
+      privacyConsent.focus();
+      return;
+    }
     if (!challengeLoaded) {
       showMessage('Espera a que cargue la verificación de seguridad.', false);
       return;
@@ -179,7 +196,7 @@ export function authView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ user, pass, challengeProof, website: websiteField.value })
+        body: JSON.stringify({ user, pass, challengeProof, website: websiteField.value, sessionCookieConsent: privacyConsent.checked })
       });
 
       const data = await res.json();
@@ -192,12 +209,15 @@ export function authView() {
 
       if (mode === 'register') {
         showMessage('Registrada con éxito', true);
+        try { localStorage.setItem('privacyNoticeAccepted', privacyNoticeVersion); } catch { /* Continue without persisted preference. */ }
         form.reset();
+        privacyConsent.checked = true;
         passInput.autocomplete = 'current-password';
         await loadChallenge();
         return;
       }
 
+      try { localStorage.setItem('privacyNoticeAccepted', privacyNoticeVersion); } catch { /* Continue without persisted preference. */ }
       const PasswordCredentialConstructor = window['PasswordCredential'];
       if (PasswordCredentialConstructor && navigator.credentials?.store) {
         try {

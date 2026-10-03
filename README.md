@@ -10,6 +10,7 @@ public/                 Cliente TypeScript y recursos estáticos
   shared/               Componentes e interacciones reutilizables
 server/                 Servidor HTTP y SQLite en TypeScript
 docs/manual.html        Manual visual, imprimible y sin dependencias externas
+docs/privacy.html       Aviso de privacidad y cookies de sesión
 tsconfig.server.json    Configuración de compilación del servidor
 package.json            Scripts y dependencias de compilación
 package-lock.json       Versiones exactas para instalaciones reproducibles
@@ -43,13 +44,15 @@ Para desarrollo local, `npm start` lee `.env` si existe. Si la base no tiene nin
 
 El inicio de sesión y el registro público incorporan una prueba de trabajo SHA-256 de un solo uso, calculada en el navegador, además de límites de intentos por IP y un campo trampa para bots. La verificación no usa CAPTCHA de terceros; tampoco confirma identidad, así que habilita el registro público solo cuando corresponda.
 
-Cada cuenta recibe un identificador público diario compacto en formato `AAMMDDNN`, por ejemplo `26092901`. El contador se guarda por fecha y continúa aunque se eliminen cuentas. Los IDs antiguos con barras se convierten al nuevo formato al iniciar el servidor; la clave primaria interna sigue oculta y mantiene los vínculos existentes.
+Cada cuenta recibe un identificador público diario compacto en formato `AAMMDDNN`. El contador se guarda por fecha y continúa aunque se eliminen cuentas. Los IDs antiguos con barras se convierten al nuevo formato al iniciar el servidor; la clave primaria interna sigue oculta y mantiene los vínculos existentes.
 
 ## Control de inscripciones
 
 El admin gestiona el registro público desde **Dashboard → Gestión de usuarios**, en la tarjeta destacada **Inscripciones públicas**. El botón **Abrir inscripciones** permite crear cuentas desde la pantalla de acceso; **Cerrar inscripciones** bloquea nuevas altas públicas y oculta el botón de registro. El estado queda guardado en SQLite y el formulario de acceso lo actualiza automáticamente mientras está abierto. La administración conserva la posibilidad de crear usuarios desde Gestión de usuarios, incluso cuando el registro público está cerrado. En instalaciones nuevas las inscripciones comienzan cerradas.
 
 Abre el botón **Manual de uso** en el acceso o **Manual** en la barra superior para consultar la guía dentro de la aplicación. También puedes abrir [docs/manual.html](docs/manual.html) directamente e imprimir o guardar como PDF desde el navegador.
+
+El acceso muestra una casilla de aceptación de la cookie esencial de sesión y enlaza al [aviso de privacidad](docs/privacy.html). La aceptación se valida en el servidor, se asocia a la cuenta con la versión del aviso y se recuerda en ese navegador para la misma versión. La cookie de sesión dura como máximo siete días; en producción se marca `Secure`, además de `HttpOnly` y `SameSite=Strict`. El aviso no publica datos personales de contacto; la comunidad debe definir la identidad y domicilio del responsable antes de considerarlo definitivo.
 
 Consulta [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) para revisar los controles comprobados y los riesgos pendientes.
 
@@ -59,39 +62,22 @@ El proyecto incluye `render.yaml` para Render. La compilación usa `npm ci --inc
 
 Antes del primer deploy, conecta el repositorio a Render, configura `ADMIN_USER` y `ADMIN_PASSWORD` como secretos (contraseña de al menos 10 caracteres), conserva el disco en `/var/data` y usa una sola instancia porque las sesiones actuales viven en memoria. Render termina HTTPS delante de la app; `Secure` en cookies y HSTS se activan con `NODE_ENV=production`. Tras el primer deploy, confirma que `/healthz` responda y que el acceso admin funcione. Configura backups externos del disco antes de usar datos reales.
 
-### Pasar este código a un repositorio existente
+### Actualizar el repositorio
 
-Esta carpeta descargada no tiene `.git` ni un remoto configurado. Para conservar el historial del repositorio original y evitar reemplazar archivos remotos, clónalo en una carpeta nueva y copia ahí el código. En PowerShell, ejecuta esto desde esta carpeta:
+Desde una copia clonada y conectada a GitHub, revisa y publica cambios con:
 
 ```powershell
-$sourcePath = (Get-Location).Path
-$repoUrl = Read-Host "URL HTTPS o SSH del repositorio existente"
-$repoPath = "C:\Users\Alex\Documents\web-projects\granshaique-publish"
-if (Test-Path $repoPath) { throw "La carpeta destino ya existe. Cambia `$repoPath a una carpeta nueva y vacía." }
-git clone $repoUrl $repoPath
-if ($LASTEXITCODE -ne 0) { throw "No se pudo clonar el repositorio." }
-Set-Location $repoPath
-git switch -c feat/typescript-mobile-manual
-robocopy $sourcePath $repoPath /E /XD ".git" "node_modules" "dist" "uploads" "$sourcePath\server\data" /XF ".env"
-if ($LASTEXITCODE -ge 8) { throw "Robocopy encontró un error; revisa su salida antes de continuar." }
+git status --short
 npm ci
 npm run build
-git status --short
-git ls-files -- .env
-```
-
-La copia excluye la contraseña local, dependencias compiladas, base SQLite y cargas; no uses `/MIR` ni `git push --force`. Si `git ls-files -- .env` devuelve `.env`, quítalo del seguimiento con `git rm --cached -- .env` y rota cualquier secreto que haya estado publicado. Revisa los cambios con `git diff --check` y `git diff --stat`, luego:
-
-```powershell
 git add -A
 git diff --cached --check
 git diff --cached --stat
-git diff --cached
-git commit -m "feat: improve mobile experience and deployment setup"
-git push -u origin feat/typescript-mobile-manual
+git commit -m "Describe los cambios"
+git push origin main
 ```
 
-Revisa el diff preparado para confirmar que no incluya `.env`, datos personales, SQLite ni archivos privados. Después abre un pull request desde `feat/typescript-mobile-manual` a la rama principal y fusiónalo según las reglas del repositorio.
+El `.gitignore` excluye `.env`, `node_modules`, `dist`, la base SQLite y los archivos cargados. Confirma que no hayas quitado esas exclusiones antes de publicar; nunca agregues contraseñas ni datos privados al repositorio.
 
 ### Actualizar el servicio existente en Render
 

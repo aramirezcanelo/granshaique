@@ -16,7 +16,8 @@ type JsonHandler = (body: JsonObject) => void;
 const PORT = process.env.PORT || 8080;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_JSON_BYTES = 1_000_000;
-const SERVER_BUILD = 'dashboard-manual-auth-pow-2026-09-29';
+const SERVER_BUILD = 'privacy-session-consent-v1';
+const PRIVACY_NOTICE_VERSION = 'v1';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Compiled output lives in dist/server; keep static assets and persistent data rooted at the project.
 const root = path.resolve(__dirname, '..', '..');
@@ -41,7 +42,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS users (
   pass TEXT,
   progreso INTEGER DEFAULT 0,
   calificacion INTEGER DEFAULT 0,
-  rol TEXT DEFAULT 'usuario'
+  rol TEXT DEFAULT 'usuario',
+  privacy_notice_version TEXT,
+  privacy_accepted_at TEXT
 )`);
 
 const schema = db.prepare("PRAGMA table_info(users)").all();
@@ -51,6 +54,8 @@ if (!fields.includes('progreso')) db.exec('ALTER TABLE users ADD COLUMN progreso
 if (!fields.includes('calificacion')) db.exec('ALTER TABLE users ADD COLUMN calificacion INTEGER DEFAULT 0');
 if (!fields.includes('rol')) db.exec('ALTER TABLE users ADD COLUMN rol TEXT DEFAULT "usuario"');
 if (!fields.includes('manual_override')) db.exec('ALTER TABLE users ADD COLUMN manual_override INTEGER DEFAULT 0');
+if (!fields.includes('privacy_notice_version')) db.exec('ALTER TABLE users ADD COLUMN privacy_notice_version TEXT');
+if (!fields.includes('privacy_accepted_at')) db.exec('ALTER TABLE users ADD COLUMN privacy_accepted_at TEXT');
 db.exec('UPDATE users SET manual_override = 0 WHERE manual_override <> 0');
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_codigo_usuario ON users(codigo_usuario) WHERE codigo_usuario IS NOT NULL AND codigo_usuario <> ''");
 db.exec(`CREATE TABLE IF NOT EXISTS daily_user_sequences (
@@ -840,8 +845,9 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   }
 
   if (req.method === 'POST' && (req.url === '/api/register' || req.url === '/api/login')) {
-    readJson(req, res, ({ user, pass, rol, challengeProof, website }) => {
+    readJson(req, res, ({ user, pass, rol, challengeProof, website, sessionCookieConsent }) => {
       if (typeof user !== 'string' || typeof pass !== 'string') return sendJson(res, 400, { message: 'Faltan datos para acceder.' });
+      if (sessionCookieConsent !== true) return sendJson(res, 400, { message: 'Debes leer el Aviso de privacidad y aceptar la cookie de sesión para continuar.' });
       const ip = getClientIp(req);
       const requester = req.url === '/api/register' ? getSessionUser(req) : null;
       if (req.url === '/api/login') {
@@ -876,8 +882,8 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
         if ((!requester || requester.rol !== 'admin') && !isPublicRegistrationOpen()) return sendJson(res, 403, { message: 'Las inscripciones están cerradas. Consulta con la administración.' });
         const exists = db.prepare('SELECT 1 FROM users WHERE user = ?').get(user);
         if (exists) return sendJson(res, 409, { message: 'Ese usuario ya existe.' });
-        db.prepare('INSERT INTO users (codigo_usuario, user, pass, progreso, calificacion, rol) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(nextPublicUserId(), user, hashPassword(pass), 0, 0, requestedRole);
+        db.prepare('INSERT INTO users (codigo_usuario, user, pass, progreso, calificacion, rol, privacy_notice_version, privacy_accepted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+          .run(nextPublicUserId(), user, hashPassword(pass), 0, 0, requestedRole, PRIVACY_NOTICE_VERSION, new Date().toISOString());
         return sendJson(res, 201, { message: 'Registro exitoso.' });
       }
 
@@ -888,6 +894,8 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
       }
       loginAttempts.delete(ip);
       if (!isPasswordHash(row.pass)) db.prepare('UPDATE users SET pass = ? WHERE id = ?').run(hashPassword(pass), row.id);
+      db.prepare('UPDATE users SET privacy_notice_version = ?, privacy_accepted_at = ? WHERE id = ?')
+        .run(PRIVACY_NOTICE_VERSION, new Date().toISOString(), row.id);
       setSession(res, row.id);
       sendJson(res, 200, { id: row.id, codigoUsuario: row.codigoUsuario, user: row.user, role: row.rol, progreso: row.progreso, calificacion: row.calificacion });
     });

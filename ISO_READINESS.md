@@ -1,6 +1,6 @@
 # Revisión de preparación ISO
 
-Fecha de revisión: 2026-08-20. Alcance: código y configuración versionada de Gran Chaique. Este documento **no es una certificación ISO** ni declara conformidad total: una certificación requiere definir el alcance organizacional, análisis de riesgos, evidencias operativas y una auditoría independiente.
+Alcance: código y configuración versionada de Gran Chaique. Este documento **no es una certificación ISO** ni declara conformidad total: una certificación requiere definir el alcance organizacional, análisis de riesgos, evidencias operativas y una auditoría independiente.
 
 ## Resultado
 

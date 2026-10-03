@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>Aviso de privacidad y cookies · Gran Chaique</title>
+    <link rel="stylesheet" href="../public/static/style.css?v=privacy-v1" />
+    <link rel="stylesheet" href="./privacy.css?v=1" />
+  </head>
+  <body class="privacy-page">
+    <main class="privacy-shell">
+      <a class="privacy-back" href="../index.html">← Volver a Gran Chaique</a>
+      <header class="privacy-header">
+        <p class="privacy-eyebrow">Gran Chaique · Comunidad</p>
+        <h1>Aviso de privacidad y cookies</h1>
+      <p class="privacy-updated">Versión 1</p>
+        <p>Este aviso explica qué información utiliza la plataforma, para qué la necesita y cómo funciona la cookie esencial de sesión.</p>
+      </header>
+
+      <aside class="privacy-note" aria-label="Información pendiente de definición">
+        <strong>Transparencia sobre el responsable</strong>
+        <p>Este proyecto todavía no publica una identidad legal ni un domicilio del responsable. La comunidad que administra Gran Chaique debe definir y comunicar esos datos antes de considerar este borrador un aviso integral definitivo. No se incluyen datos personales de contacto aquí.</p>
+      </aside>
+
+      <section>
+        <h2>1. Datos que se utilizan</h2>
+        <ul>
+          <li><strong>Cuenta:</strong> nombre de usuario, identificador comunitario y rol de acceso.</li>
+          <li><strong>Autenticación:</strong> contraseña, guardada como hash criptográfico y no como texto legible; token aleatorio de sesión; versión del aviso y fecha de aceptación.</li>
+          <li><strong>Actividad educativa:</strong> progreso, calificaciones, respuestas y estado de ejercicios.</li>
+          <li><strong>Contenido de la plataforma:</strong> materiales y archivos que la administración incorpora para la comunidad.</li>
+          <li><strong>Seguridad:</strong> datos técnicos transitorios necesarios para validar el inicio de sesión y limitar intentos automatizados, incluida la dirección IP durante controles temporales en memoria.</li>
+        </ul>
+        <p>La plataforma no solicita deliberadamente datos personales sensibles. Evita incluir información sensible o de terceras personas en respuestas, nombres de usuario y materiales.</p>
+      </section>
+
+      <section>
+        <h2>2. Finalidades</h2>
+        <p>La información se usa para crear y administrar cuentas, autenticar el acceso, mostrar cursos y materiales, registrar el progreso y las respuestas, calcular calificaciones, prestar soporte y proteger el servicio frente a accesos no autorizados o abuso.</p>
+        <p>La versión y fecha de aceptación del aviso se asocian a la cuenta para dejar constancia de la aceptación. No se usan cookies publicitarias ni se integra una herramienta de analítica en el código del proyecto.</p>
+      </section>
+
+      <section>
+        <h2>3. Cookie necesaria de sesión</h2>
+        <p>Al marcar la casilla de aceptación e iniciar sesión, el servidor crea la cookie <code>session</code>. Es necesaria para conservar el acceso autenticado entre solicitudes; sin ella no es posible usar una cuenta. No se utiliza para publicidad ni seguimiento entre sitios.</p>
+        <dl>
+          <div><dt>Duración máxima</dt><dd>7 días; la sesión del servidor puede terminar antes por seguridad o por reinicio del servicio.</dd></div>
+          <div><dt>Protección</dt><dd><code>HttpOnly</code>, <code>SameSite=Strict</code> y, en producción con HTTPS, <code>Secure</code>. JavaScript no puede leer su token.</dd></div>
+          <div><dt>Verificación de acceso</dt><dd>La cookie temporal <code>login_challenge</code> protege el inicio de sesión contra automatización; vence en pocos minutos y se elimina al validar el intento.</dd></div>
+          <div><dt>Preferencia en el dispositivo</dt><dd>El navegador guarda localmente la versión del aviso aceptada para no pedir la misma confirmación en cada acceso. Esta preferencia no contiene el token de sesión.</dd></div>
+        </dl>
+        <p>Si no aceptas esta cookie, no inicies sesión: las funciones de cuenta no pueden operar sin ella. Puedes cerrar sesión y borrar los datos del sitio desde las opciones de tu navegador.</p>
+      </section>
+
+      <section>
+        <h2>4. Dónde se guarda y con quién se comparte</h2>
+        <p>Las cuentas, el contenido y el progreso se guardan en la base de datos y el almacenamiento configurados para el servicio. El proveedor de alojamiento procesa solicitudes y datos técnicos para entregar la aplicación. Los datos no se venden ni se comparten para publicidad.</p>
+        <p>Al abrir videos insertados desde YouTube, el navegador se conecta con ese proveedor y se aplican sus propias condiciones y prácticas de privacidad. También puede entregarse información cuando una autoridad competente lo exija conforme a la ley.</p>
+      </section>
+
+      <section>
+        <h2>5. Conservación y seguridad</h2>
+        <p>La cuenta, el progreso y las respuestas se conservan mientras la cuenta exista y sean necesarios para operar el servicio; la administración puede eliminar una cuenta. Los intentos de acceso y retos de seguridad son temporales y se guardan en memoria del proceso. Se aplican controles como contraseñas con hash, sesiones protegidas, límites de intentos y conexiones cifradas en producción.</p>
+      </section>
+
+      <section>
+        <h2>6. Tus derechos y solicitudes</h2>
+        <p>Puedes solicitar acceso, rectificación, cancelación u oposición (derechos ARCO) y hacer preguntas sobre el tratamiento de tus datos mediante el canal de soporte de la comunidad. Si no puedes iniciar sesión, utiliza el canal por el que recibiste acceso para contactar a la administración. La identidad y el domicilio del responsable deben ser comunicados por la comunidad administradora.</p>
+      </section>
+
+      <section>
+        <h2>7. Cambios a este aviso</h2>
+        <p>Los cambios se publicarán en esta página con una nueva versión. Si un cambio requiere renovar la aceptación, la plataforma volverá a mostrar la casilla antes del acceso.</p>
+      </section>
+
+      <footer class="privacy-footer">Gran Chaique · Aviso de privacidad · Versión 1</footer>
+    </main>
+  </body>
+</html>

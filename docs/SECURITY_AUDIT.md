@@ -1,6 +1,6 @@
 # Auditoría técnica y de seguridad
 
-Fecha: 2026-09-29. Alcance: código fuente, configuración, dependencias bloqueadas y base SQLite local. No es una prueba de penetración ni verifica la configuración privada de Render.
+Alcance: código fuente, configuración, dependencias bloqueadas y base SQLite local. No es una prueba de penetración ni verifica la configuración privada de Render.
 
 ## Resumen
 
