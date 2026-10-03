@@ -964,7 +964,7 @@ function renderUserRows(users) {
       <td><input type="text" value="${escapeHtml(user.user)}" data-field="user"></td>
       <td>
         <div class="password-wrap">
-          <input type="password" value="" placeholder="Dejar vacío para conservar" data-field="pass" class="pass-input" autocomplete="new-password">
+          <input type="password" value="" placeholder="Nueva contraseña" data-field="pass" class="pass-input" autocomplete="new-password">
         </div>
       </td>
       <td><input type="number" value="${escapeHtml(user.progreso)}" data-field="progreso" readonly title="Se calcula automáticamente según lo que responde el alumno"></td>
@@ -1054,7 +1054,7 @@ async function refreshUserProgressColumns() {
 
 function loadUsers() {
   const panel = document.getElementById('panelContent');
-  fetch('/api/users')
+  return fetch('/api/users')
     .then((res) => res.json())
     .then(({ users = [] }) => {
       allUsers = users;
@@ -1234,7 +1234,7 @@ export function dashboardView(session = {}) {
       </div>
       <div class="panel-toolbar">
         <button id="refreshDashboardBtn" type="button" class="btn ghost" title="Actualizar">↻</button>
-        <button id="togglePanelBtn" type="button" class="btn primary">
+        <button id="togglePanelBtn" type="button" class="btn primary" disabled>
           <span>Gestión de cursos</span>
           <span class="icon-swap">⇆</span>
         </button>
@@ -1279,7 +1279,7 @@ export function dashboardView(session = {}) {
   const renderPanel = async () => {
     if (panelMode === 'users') {
       document.getElementById('togglePanelBtn').querySelector('span').textContent = 'Gestión de cursos';
-      loadUsers();
+      await loadUsers();
     } else {
       document.getElementById('togglePanelBtn').querySelector('span').textContent = 'Gestión de usuarios';
       exerciseBank = await fetchExercisesFromServer();
@@ -1289,22 +1289,30 @@ export function dashboardView(session = {}) {
 
   const container = document.getElementById('panelContentContainer');
 
-  document.getElementById('togglePanelBtn').addEventListener('click', () => {
-    const toggleButton = document.getElementById('togglePanelBtn');
+  const toggleButton = document.getElementById('togglePanelBtn');
+  toggleButton.addEventListener('click', () => {
     if (toggleButton.disabled) return;
     toggleButton.disabled = true;
     container.classList.add('flipping');
-    setTimeout(() => {
+    container.setAttribute('aria-busy', 'true');
+    window.setTimeout(async () => {
       panelMode = panelMode === 'users' ? 'courses' : 'users';
       selectedTypeForForm = null;
       orderModeActive = false;
-      renderPanel();
-      container.classList.remove('flipping');
-      container.classList.add('panel-arriving');
-      setTimeout(() => {
+      try {
+        await renderPanel();
+      } catch {
+        document.getElementById('panelContent').innerHTML = '<p class="empty-state">No se pudo cargar esta sección. Intenta actualizar el panel.</p>';
+      } finally {
+        container.classList.remove('flipping', 'panel-arriving');
+        void container.offsetWidth;
+        container.setAttribute('aria-busy', 'false');
+        container.classList.add('panel-arriving');
+        window.setTimeout(() => {
         container.classList.remove('panel-arriving');
         toggleButton.disabled = false;
-      }, 460);
+        }, 460);
+      }
     }, 180);
   });
 
@@ -1314,7 +1322,9 @@ export function dashboardView(session = {}) {
     document.body.classList.remove('drawer-open');
   });
 
-  renderPanel();
+  void renderPanel().finally(() => {
+    toggleButton.disabled = false;
+  });
 
   setInterval(() => {
     if (panelMode === 'users' && drawer.classList.contains('open') && document.getElementById('userTableBody')) {
