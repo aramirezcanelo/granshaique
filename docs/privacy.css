@@ -1,10 +1,10 @@
 :root {
   color-scheme: light;
-  --glass-ink: #263832;
-  --glass-muted: #5d7068;
-  --glass-accent: #41675d;
+  --glass-ink: #342832;
+  --glass-muted: #71666e;
+  --glass-accent: #a13f73;
   --glass-line: rgba(255, 255, 255, .76);
-  --glass-shadow: 18px 22px 48px rgba(49, 72, 61, .13), -12px -12px 34px rgba(255, 255, 255, .78);
+  --glass-shadow: 18px 22px 48px rgba(57, 43, 52, .11), -12px -12px 34px rgba(255, 255, 255, .92);
 }
 
 * { box-sizing: border-box; }
@@ -16,9 +16,9 @@ body.privacy-page {
   overflow-x: hidden;
   color: var(--glass-ink);
   background:
-    radial-gradient(ellipse at 10% 8%, rgba(176, 202, 190, .5), transparent 36%),
-    radial-gradient(ellipse at 92% 92%, rgba(181, 196, 207, .52), transparent 38%),
-    linear-gradient(135deg, #e5ece8 0%, #f4f7f4 48%, #e6ebef 100%);
+    radial-gradient(ellipse at 10% 8%, rgba(231, 190, 210, .34), transparent 36%),
+    radial-gradient(ellipse at 92% 92%, rgba(204, 211, 231, .38), transparent 38%),
+    linear-gradient(135deg, #f5f5f7 0%, #fff 48%, #f1f2f6 100%);
   background-attachment: fixed;
 }
 
@@ -45,7 +45,7 @@ body.privacy-page {
   height: 340px;
   border: 1px solid rgba(255, 255, 255, .56);
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.68), rgba(184,204,194,.11) 68%, transparent 70%);
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.78), rgba(230,194,211,.12) 68%, transparent 70%);
   content: "";
   pointer-events: none;
 }
@@ -59,8 +59,8 @@ body.privacy-page {
   padding: 0 17px;
   border: 1px solid rgba(255,255,255,.86);
   border-radius: 14px;
-  background: rgba(244,248,245,.65);
-  box-shadow: 6px 7px 16px rgba(51,76,65,.09), -5px -5px 14px rgba(255,255,255,.78);
+  background: rgba(255,255,255,.76);
+  box-shadow: 6px 7px 16px rgba(57,43,52,.08), -5px -5px 14px rgba(255,255,255,.92);
   color: var(--glass-accent);
   font-size: .9rem;
   font-weight: 700;
@@ -68,32 +68,32 @@ body.privacy-page {
   transition: transform .18s ease, box-shadow .18s ease;
 }
 .privacy-back:hover { transform: translateY(-2px); box-shadow: 8px 10px 20px rgba(51,76,65,.12), -5px -5px 14px rgba(255,255,255,.82); }
-.privacy-back:focus-visible, .privacy-shell a:focus-visible { outline: 3px solid #41675d; outline-offset: 3px; }
+.privacy-back:focus-visible, .privacy-shell a:focus-visible { outline: 3px solid #a13f73; outline-offset: 3px; }
 
 .privacy-header { max-width: 760px; padding: 0 0 30px; border-bottom: 1px solid rgba(100,126,113,.19); }
-.privacy-eyebrow { margin: 0 0 12px; color: #52796e; font-size: .75rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
-.privacy-header h1 { max-width: 700px; margin: 0; color: #20312b; font-size: clamp(2.25rem, 6vw, 4.2rem); letter-spacing: -.055em; line-height: .99; }
-.privacy-updated { display: inline-flex; margin: 18px 0 0; padding: 6px 11px; border: 1px solid rgba(85,125,108,.14); border-radius: 999px; background: rgba(221,234,226,.55); color: #496a5d; font-size: .78rem; font-weight: 700; }
+.privacy-eyebrow { margin: 0 0 12px; color: #a13f73; font-size: .75rem; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+.privacy-header h1 { max-width: 700px; margin: 0; color: #30242d; font-size: clamp(2.25rem, 6vw, 4.2rem); letter-spacing: -.055em; line-height: .99; }
+.privacy-updated { display: inline-flex; margin: 18px 0 0; padding: 6px 11px; border: 1px solid rgba(161,63,115,.14); border-radius: 999px; background: rgba(248,232,241,.72); color: #87345f; font-size: .78rem; font-weight: 700; }
 .privacy-header > p:last-child { max-width: 660px; margin: 15px 0 0; color: var(--glass-muted); font-size: 1.02rem; line-height: 1.75; }
 
 .privacy-note {
   margin: 28px 0;
   padding: 20px 23px;
   border: 1px solid rgba(255,255,255,.82);
-  border-left: 4px solid #769689;
+  border-left: 4px solid #c46b96;
   border-radius: 18px;
-  background: rgba(226,235,229,.66);
-  box-shadow: inset 4px 4px 11px rgba(57,83,69,.06), inset -4px -4px 11px rgba(255,255,255,.64);
+  background: rgba(255,255,255,.6);
+  box-shadow: inset 4px 4px 11px rgba(57,43,52,.04), inset -4px -4px 11px rgba(255,255,255,.86);
 }
-.privacy-note strong { color: #34564a; }
-.privacy-note p { margin: 7px 0 0; color: #53675e; line-height: 1.7; }
+.privacy-note strong { color: #71334f; }
+.privacy-note p { margin: 7px 0 0; color: #61545d; line-height: 1.7; }
 
 .privacy-shell section { padding: 25px 0; border-bottom: 1px solid rgba(100,126,113,.17); }
-.privacy-shell h2 { margin: 0 0 12px; color: #2c443a; font-size: clamp(1.1rem, 2.5vw, 1.32rem); letter-spacing: -.02em; }
-.privacy-shell p, .privacy-shell li { color: #50625a; font-size: .97rem; line-height: 1.78; }
+.privacy-shell h2 { margin: 0 0 12px; color: #493541; font-size: clamp(1.1rem, 2.5vw, 1.32rem); letter-spacing: -.02em; }
+.privacy-shell p, .privacy-shell li { color: #5e535b; font-size: .97rem; line-height: 1.78; }
 .privacy-shell p { margin: 10px 0 0; }
 .privacy-shell ul { display: grid; gap: 9px; margin: 13px 0; padding-left: 22px; }
-.privacy-shell li::marker { color: #63877a; }
+.privacy-shell li::marker { color: #b34e82; }
 .privacy-shell dl { display: grid; gap: 12px; margin: 18px 0; }
 .privacy-shell dl > div {
   display: grid;
@@ -102,13 +102,13 @@ body.privacy-page {
   padding: 16px 18px;
   border: 1px solid rgba(255,255,255,.88);
   border-radius: 16px;
-  background: rgba(241,246,242,.68);
-  box-shadow: 5px 6px 15px rgba(50,75,64,.06), -4px -4px 12px rgba(255,255,255,.68);
+  background: rgba(255,255,255,.62);
+  box-shadow: 5px 6px 15px rgba(57,43,52,.055), -4px -4px 12px rgba(255,255,255,.9);
 }
-.privacy-shell dt { color: #35584c; font-size: .9rem; font-weight: 750; }
-.privacy-shell dd { margin: 0; color: #50625a; font-size: .92rem; line-height: 1.65; }
-.privacy-shell code { padding: .16em .42em; border: 1px solid rgba(255,255,255,.8); border-radius: 7px; background: rgba(223,233,227,.75); color: #35584c; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
-.privacy-footer { padding-top: 25px; color: #718179; font-size: .82rem; }
+.privacy-shell dt { color: #783d5c; font-size: .9rem; font-weight: 750; }
+.privacy-shell dd { margin: 0; color: #5e535b; font-size: .92rem; line-height: 1.65; }
+.privacy-shell code { padding: .16em .42em; border: 1px solid rgba(255,255,255,.92); border-radius: 7px; background: rgba(248,232,241,.72); color: #783d5c; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
+.privacy-footer { padding-top: 25px; color: #80747c; font-size: .82rem; }
 
 @media (max-width: 600px) {
   body.privacy-page { padding: 12px; }
