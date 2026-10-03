@@ -7,8 +7,8 @@
     <title>Aviso de privacidad y cookies · Gran Chaique</title>
     <meta name="theme-color" content="#ffffff" />
     <meta name="description" content="Aviso de privacidad y cookies de Gran Chaique." />
-    <link rel="stylesheet" href="../public/static/style.css?v=glass-v3" />
-    <link rel="stylesheet" href="./privacy.css?v=glass-v3" />
+    <link rel="stylesheet" href="../public/static/style.css?v=cookie-consent-v2" />
+    <link rel="stylesheet" href="./privacy.css?v=cookie-consent-v2" />
   </head>
   <body class="privacy-page">
     <main class="privacy-shell">
@@ -16,7 +16,7 @@
       <header class="privacy-header">
         <p class="privacy-eyebrow">Gran Chaique · Comunidad</p>
         <h1>Aviso de privacidad y cookies</h1>
-        <p class="privacy-updated">Versión 1</p>
+        <p class="privacy-updated">Versión 2</p>
         <p>Este aviso explica qué información utiliza la plataforma, para qué la necesita y cómo funciona la cookie esencial de sesión.</p>
       </header>
 
@@ -40,19 +40,19 @@
       <section>
         <h2>2. Finalidades</h2>
         <p>La información se usa para crear y administrar cuentas, autenticar el acceso, mostrar cursos y materiales, registrar el progreso y las respuestas, calcular calificaciones, prestar soporte y proteger el servicio frente a accesos no autorizados o abuso.</p>
-        <p>La versión y fecha de aceptación del aviso se asocian a la cuenta para dejar constancia de la aceptación. No se usan cookies publicitarias ni se integra una herramienta de analítica en el código del proyecto.</p>
+        <p>La versión y fecha de aceptación del aviso se asocian a la cuenta para dejar constancia de la aceptación. El navegador también recuerda localmente si aceptaste o rechazaste las cookies para conservar tu elección y permitirte cambiarla. No se usan cookies publicitarias ni se integra una herramienta de analítica en el código del proyecto.</p>
       </section>
 
       <section>
         <h2>3. Cookie necesaria de sesión</h2>
-        <p>Al marcar la casilla de aceptación e iniciar sesión, el servidor crea la cookie <code>session</code>. Es necesaria para conservar el acceso autenticado entre solicitudes; sin ella no es posible usar una cuenta. No se utiliza para publicidad ni seguimiento entre sitios.</p>
+        <p>La notificación de acceso permite aceptar o rechazar las cookies esenciales. Al aceptar, se habilita una cookie temporal de seguridad; solo cuando el inicio de sesión termina correctamente, el servidor crea la cookie <code>session</code>. Esta mantiene el acceso autenticado entre solicitudes; sin ella no es posible usar una cuenta. No se utiliza para publicidad ni seguimiento entre sitios.</p>
         <dl>
           <div><dt>Duración máxima</dt><dd>7 días; la sesión del servidor puede terminar antes por seguridad o por reinicio del servicio.</dd></div>
           <div><dt>Protección</dt><dd><code>HttpOnly</code>, <code>SameSite=Strict</code> y, en producción con HTTPS, <code>Secure</code>. JavaScript no puede leer su token.</dd></div>
-          <div><dt>Verificación de acceso</dt><dd>La cookie temporal <code>login_challenge</code> protege el inicio de sesión contra automatización; vence en pocos minutos y se elimina al validar el intento.</dd></div>
-          <div><dt>Preferencia en el dispositivo</dt><dd>El navegador guarda localmente la versión del aviso aceptada para no pedir la misma confirmación en cada acceso. Esta preferencia no contiene el token de sesión.</dd></div>
+          <div><dt>Verificación de acceso</dt><dd>La cookie temporal <code>login_challenge</code> protege el inicio de sesión contra automatización; vence en pocos minutos, se elimina al validar el intento o rechazar las cookies.</dd></div>
+          <div><dt>Preferencia en el dispositivo</dt><dd>El navegador recuerda localmente si aceptaste o rechazaste las cookies y ofrece una opción para cambiar tu decisión. Esta preferencia no contiene el token de sesión.</dd></div>
         </dl>
-        <p>Si no aceptas esta cookie, no inicies sesión: las funciones de cuenta no pueden operar sin ella. Puedes cerrar sesión y borrar los datos del sitio desde las opciones de tu navegador.</p>
+        <p>Si rechazas, no se habilita el acceso y no se prepara la cookie temporal ni se crea la cookie de sesión. Puedes cambiar tu decisión con <strong>Cambiar preferencia</strong> en la pantalla de acceso, o borrar los datos del sitio desde las opciones del navegador.</p>
       </section>
 
       <section>
@@ -73,10 +73,10 @@
 
       <section>
         <h2>7. Cambios a este aviso</h2>
-        <p>Los cambios se publicarán en esta página con una nueva versión. Si un cambio requiere renovar la aceptación, la plataforma volverá a mostrar la casilla antes del acceso.</p>
+        <p>Los cambios se publicarán en esta página con una nueva versión. Si un cambio requiere renovar la decisión, la plataforma volverá a mostrar la notificación antes del acceso.</p>
       </section>
 
-      <footer class="privacy-footer">Gran Chaique · Aviso de privacidad · Versión 1</footer>
+      <footer class="privacy-footer">Gran Chaique · Aviso de privacidad · Versión 2</footer>
     </main>
   </body>
 </html>

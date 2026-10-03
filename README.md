@@ -52,7 +52,7 @@ El admin gestiona el registro público desde **Dashboard → Gestión de usuario
 
 Abre el botón **Manual de uso** en el acceso o **Manual** en la barra superior para consultar la guía dentro de la aplicación. También puedes abrir [docs/manual.html](docs/manual.html) directamente e imprimir o guardar como PDF desde el navegador.
 
-El acceso muestra una casilla de aceptación de la cookie esencial de sesión y enlaza al [aviso de privacidad](docs/privacy.html). La aceptación se valida en el servidor, se asocia a la cuenta con la versión del aviso y se recuerda en ese navegador para la misma versión. La cookie de sesión dura como máximo siete días; en producción se marca `Secure`, además de `HttpOnly` y `SameSite=Strict`. El aviso no publica datos personales de contacto; la comunidad debe definir la identidad y domicilio del responsable antes de considerarlo definitivo.
+En el primer acceso aparece una notificación para **Aceptar y continuar** o **Rechazar** las cookies esenciales; incluye el [aviso de privacidad](docs/privacy.html). Si se rechazan, el inicio de sesión y el registro quedan desactivados y no se prepara el reto temporal. La elección se recuerda localmente y puede cambiarse desde **Cambiar preferencia**. La aceptación se valida en el servidor y se asocia a la cuenta con la versión del aviso. La cookie de sesión dura como máximo siete días; en producción se marca `Secure`, además de `HttpOnly` y `SameSite=Strict`. El aviso no publica datos personales de contacto; la comunidad debe definir la identidad y domicilio del responsable antes de considerarlo definitivo.
 
 Consulta [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) para revisar los controles comprobados y los riesgos pendientes.
 

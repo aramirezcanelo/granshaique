@@ -44,10 +44,10 @@ export function authView() {
               </div>
               <span class="challenge-help" id="challengeHelp">Se verifica en este dispositivo; no enviamos datos a un servicio de CAPTCHA.</span>
             </fieldset>
-            <label class="privacy-consent" for="privacyConsent">
-              <input id="privacyConsent" type="checkbox" required />
-              <span>He leído el <a href="./docs/privacy.html" target="_blank" rel="noopener">Aviso de privacidad</a> y acepto el uso de la cookie necesaria para mantener mi sesión (7 días).</span>
-            </label>
+            <div class="cookie-consent-status" id="cookieConsentStatus" role="status" aria-live="polite" hidden>
+              <span id="cookieConsentMessage"></span>
+              <button class="cookie-preference-link" id="changeCookieConsentBtn" type="button">Cambiar preferencia</button>
+            </div>
             <div id="authMessage" class="auth-message"></div>
             <button class="btn primary" type="submit">Accede</button>
             <button class="btn ghost" type="button" id="registerBtn" disabled>Consultando inscripciones…</button>
@@ -57,9 +57,24 @@ export function authView() {
         </div>
       </section>
     </div>
+    <div class="cookie-consent-overlay" id="cookieConsentDialog" hidden>
+      <section class="cookie-consent-dialog" role="dialog" aria-modal="true" aria-labelledby="cookieConsentTitle" aria-describedby="cookieConsentDescription">
+        <span class="cookie-dialog-symbol" aria-hidden="true">◌</span>
+        <p class="cookie-dialog-kicker">Tu privacidad</p>
+        <h2 id="cookieConsentTitle">Cookie necesaria para iniciar sesión</h2>
+        <p id="cookieConsentDescription">Usamos una cookie segura para mantener tu sesión hasta 7 días y otra temporal para proteger el acceso automatizado. No se usan para publicidad ni seguimiento.</p>
+        <a class="cookie-dialog-policy" href="./docs/privacy.html" target="_blank" rel="noopener">Leer el Aviso de privacidad</a>
+        <div class="cookie-dialog-actions">
+          <button class="btn ghost" id="rejectCookieBtn" type="button">Rechazar</button>
+          <button class="btn primary" id="acceptCookieBtn" type="button">Aceptar y continuar</button>
+        </div>
+        <p class="cookie-dialog-footnote">Si rechazas, no iniciaremos sesión ni guardaremos la cookie de sesión. Puedes cambiar tu decisión después.</p>
+      </section>
+    </div>
   `;
 
   const form = document.getElementById('authForm');
+  const appShell = document.querySelector<HTMLElement>('.app-shell')!;
   const registerBtn = document.getElementById('registerBtn');
   const messageBox = document.getElementById('authMessage');
   const togglePassBtn = document.getElementById('togglePassBtn');
@@ -68,20 +83,105 @@ export function authView() {
   const manualBtn = document.getElementById('manualBtn');
   const challengePrompt = document.getElementById('challengePrompt');
   const refreshChallengeBtn = document.getElementById('refreshChallengeBtn');
-  const privacyConsent = document.getElementById('privacyConsent');
+  const cookieConsentDialog = document.getElementById('cookieConsentDialog');
+  const cookieConsentStatus = document.getElementById('cookieConsentStatus');
+  const cookieConsentMessage = document.getElementById('cookieConsentMessage');
+  const changeCookieConsentBtn = document.getElementById('changeCookieConsentBtn');
+  const acceptCookieBtn = document.getElementById('acceptCookieBtn');
+  const rejectCookieBtn = document.getElementById('rejectCookieBtn');
+  const authSubmitButton = form.querySelector('[type="submit"]');
   const websiteField = document.getElementById('websiteField');
   const registrationStatusMessage = document.getElementById('registrationStatusMessage');
   let challengeLoaded = false;
   let challengeSalt = '';
   let challengeDifficulty = 0;
   let submitting = false;
-  const privacyNoticeVersion = 'v1';
+  const cookieConsentKey = 'sessionCookieConsent:v2';
+  let cookieConsentAccepted = false;
+  let cookieChoiceSaved = false;
+  let publicRegistrationOpen = false;
+  authSubmitButton.disabled = true;
+  registerBtn.disabled = true;
 
-  try {
-    privacyConsent.checked = localStorage.getItem('privacyNoticeAccepted') === privacyNoticeVersion;
-  } catch {
-    // Storage can be disabled; the user can still accept for this visit.
+  const clearLoginChallenge = async () => {
+    if (location.protocol === 'file:') return;
+    try {
+      await fetch('/api/login-challenge', { method: 'DELETE', credentials: 'same-origin', cache: 'no-store' });
+    } catch {
+      // The challenge expires automatically if the server is unreachable.
+    }
+  };
+
+  const openCookieConsentDialog = () => {
+    if (submitting) return;
+    cookieConsentDialog.hidden = false;
+    appShell.inert = true;
+    acceptCookieBtn.focus();
+  };
+
+  const saveCookieConsent = (accepted) => {
+    cookieConsentAccepted = accepted;
+    cookieChoiceSaved = true;
+    try { localStorage.setItem(cookieConsentKey, accepted ? 'accepted' : 'rejected'); } catch { /* Keep the choice for this page visit. */ }
+    cookieConsentDialog.hidden = true;
+    appShell.inert = false;
+    cookieConsentStatus.hidden = false;
+    changeCookieConsentBtn.focus();
+    cookieConsentMessage.textContent = accepted
+      ? 'Cookies necesarias aceptadas. Puedes cambiar esta preferencia.'
+      : 'Cookies necesarias rechazadas. No iniciaremos sesión mientras esta preferencia siga así.';
+    authSubmitButton.disabled = !accepted;
+    registerBtn.disabled = !accepted || !publicRegistrationOpen;
+    if (accepted) {
+      void loadChallenge();
+      if (location.protocol !== 'file:') void loadRegistrationStatus();
+    } else {
+      challengeLoaded = false;
+      challengePrompt.textContent = 'Acepta las cookies necesarias para preparar la verificación de acceso.';
+      refreshChallengeBtn.hidden = true;
+      void clearLoginChallenge();
+    }
+  };
+
+  let savedCookieChoice: string | null = null;
+  try { savedCookieChoice = localStorage.getItem(cookieConsentKey); } catch { /* Ask again if local storage is unavailable. */ }
+  if (savedCookieChoice === 'accepted' || savedCookieChoice === 'rejected') {
+    cookieChoiceSaved = true;
+    cookieConsentAccepted = savedCookieChoice === 'accepted';
+    cookieConsentStatus.hidden = false;
+    cookieConsentMessage.textContent = cookieConsentAccepted
+      ? 'Cookies necesarias aceptadas. Puedes cambiar esta preferencia.'
+      : 'Cookies necesarias rechazadas. No iniciaremos sesión mientras esta preferencia siga así.';
+    authSubmitButton.disabled = !cookieConsentAccepted;
+  } else {
+    openCookieConsentDialog();
   }
+
+  acceptCookieBtn.addEventListener('click', () => saveCookieConsent(true));
+  rejectCookieBtn.addEventListener('click', () => saveCookieConsent(false));
+  changeCookieConsentBtn.addEventListener('click', openCookieConsentDialog);
+  cookieConsentDialog.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      if (cookieChoiceSaved) {
+        cookieConsentDialog.hidden = true;
+        appShell.inert = false;
+        changeCookieConsentBtn.focus();
+      }
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = cookieConsentDialog.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)');
+    const first = focusable.item(0);
+    const last = focusable.item(focusable.length - 1);
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
 
   const loadRegistrationStatus = async () => {
     registerBtn.disabled = true;
@@ -89,11 +189,13 @@ export function authView() {
       const response = await fetch('/api/registration-status', { credentials: 'same-origin', cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || typeof data.open !== 'boolean') throw new Error('No se pudo consultar');
+      publicRegistrationOpen = data.open;
       registerBtn.hidden = !data.open;
       registerBtn.textContent = data.open ? '¡Regístrate!' : 'Inscripciones cerradas';
       registrationStatusMessage.textContent = data.open ? '' : 'Las inscripciones están cerradas. Consulta con la administración.';
-      registerBtn.disabled = !data.open;
+      registerBtn.disabled = !data.open || !cookieConsentAccepted;
     } catch {
+      publicRegistrationOpen = false;
       registerBtn.hidden = true;
       registrationStatusMessage.textContent = 'No se pudo consultar si las inscripciones están abiertas.';
     }
@@ -115,6 +217,11 @@ export function authView() {
     challengeLoaded = false;
     challengeSalt = '';
     challengeDifficulty = 0;
+    if (!cookieConsentAccepted) {
+      challengePrompt.textContent = 'Acepta las cookies necesarias para preparar la verificación de acceso.';
+      refreshChallengeBtn.hidden = true;
+      return;
+    }
     challengePrompt.textContent = 'Preparando protección…';
     refreshChallengeBtn.hidden = true;
     refreshChallengeBtn.disabled = true;
@@ -127,11 +234,16 @@ export function authView() {
       const response = await fetch('/api/login-challenge', { credentials: 'same-origin', cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || typeof data.prompt !== 'string' || !/^[a-f0-9]{48}$/.test(data.salt) || !Number.isInteger(data.difficulty) || data.difficulty < 12 || data.difficulty > 22) throw new Error('Challenge unavailable');
+      if (!cookieConsentAccepted) {
+        await clearLoginChallenge();
+        return;
+      }
       challengeSalt = data.salt;
       challengeDifficulty = data.difficulty;
       challengePrompt.textContent = data.prompt;
       challengeLoaded = true;
     } catch {
+      if (!cookieConsentAccepted) return;
       challengePrompt.textContent = 'No se pudo preparar la protección. Puedes reintentar la verificación.';
       refreshChallengeBtn.hidden = false;
     } finally {
@@ -140,7 +252,7 @@ export function authView() {
   };
 
   refreshChallengeBtn.addEventListener('click', loadChallenge);
-  void loadChallenge();
+  if (cookieConsentAccepted) void loadChallenge();
 
   manualBtn.addEventListener('click', openUserManual);
 
@@ -170,9 +282,9 @@ export function authView() {
       showMessage('Completa usuario y contraseña.', false);
       return;
     }
-    if (!privacyConsent.checked) {
-      showMessage('Lee el Aviso de privacidad y acepta la cookie de sesión para continuar.', false);
-      privacyConsent.focus();
+    if (!cookieConsentAccepted) {
+      showMessage('Necesitas aceptar la cookie de sesión para iniciar sesión.', false);
+      openCookieConsentDialog();
       return;
     }
     if (!challengeLoaded) {
@@ -182,8 +294,7 @@ export function authView() {
     if (submitting) return;
 
     submitting = true;
-    const submitButton = form.querySelector('[type="submit"]');
-    submitButton.disabled = true;
+    authSubmitButton.disabled = true;
     registerBtn.disabled = true;
     let proofCompleted = false;
     try {
@@ -196,7 +307,7 @@ export function authView() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ user, pass, challengeProof, website: websiteField.value, sessionCookieConsent: privacyConsent.checked })
+        body: JSON.stringify({ user, pass, challengeProof, website: websiteField.value, sessionCookieConsent: cookieConsentAccepted })
       });
 
       const data = await res.json();
@@ -209,15 +320,12 @@ export function authView() {
 
       if (mode === 'register') {
         showMessage('Registrada con éxito', true);
-        try { localStorage.setItem('privacyNoticeAccepted', privacyNoticeVersion); } catch { /* Continue without persisted preference. */ }
         form.reset();
-        privacyConsent.checked = true;
         passInput.autocomplete = 'current-password';
         await loadChallenge();
         return;
       }
 
-      try { localStorage.setItem('privacyNoticeAccepted', privacyNoticeVersion); } catch { /* Continue without persisted preference. */ }
       const PasswordCredentialConstructor = window['PasswordCredential'];
       if (PasswordCredentialConstructor && navigator.credentials?.store) {
         try {
@@ -237,7 +345,7 @@ export function authView() {
       }
     } finally {
       submitting = false;
-      submitButton.disabled = false;
+      authSubmitButton.disabled = !cookieConsentAccepted;
       if (mode === 'register') await loadRegistrationStatus();
     }
   };

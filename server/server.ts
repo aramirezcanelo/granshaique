@@ -16,8 +16,8 @@ type JsonHandler = (body: JsonObject) => void;
 const PORT = process.env.PORT || 8080;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const MAX_JSON_BYTES = 1_000_000;
-const SERVER_BUILD = 'glass-privacy-page-v2';
-const PRIVACY_NOTICE_VERSION = 'v1';
+const SERVER_BUILD = 'cookie-consent-v2';
+const PRIVACY_NOTICE_VERSION = 'v2';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Compiled output lives in dist/server; keep static assets and persistent data rooted at the project.
 const root = path.resolve(__dirname, '..', '..');
@@ -426,6 +426,15 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
     res.setHeader('Set-Cookie', `login_challenge=${challenge.id}; Path=/api; HttpOnly; SameSite=Strict; Max-Age=300${secure}`);
     res.setHeader('Cache-Control', 'no-store, private');
     sendJson(res, 200, { prompt: challenge.prompt, salt: challenge.salt, difficulty: challenge.difficulty, expiresAt: challenge.expiresAt });
+    return;
+  }
+
+  if (req.method === 'DELETE' && requestUrl === '/api/login-challenge') {
+    const challengeId = parseCookies(req.headers.cookie || '').login_challenge;
+    if (challengeId) loginChallenges.delete(challengeId);
+    res.setHeader('Set-Cookie', `login_challenge=; Path=/api; HttpOnly; SameSite=Strict; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
+    res.setHeader('Cache-Control', 'no-store, private');
+    sendJson(res, 200, { message: 'Verificación temporal cancelada.' });
     return;
   }
 
@@ -847,7 +856,7 @@ function handleRequest(req: IncomingMessage, res: ServerResponse): void {
   if (req.method === 'POST' && (req.url === '/api/register' || req.url === '/api/login')) {
     readJson(req, res, ({ user, pass, rol, challengeProof, website, sessionCookieConsent }) => {
       if (typeof user !== 'string' || typeof pass !== 'string') return sendJson(res, 400, { message: 'Faltan datos para acceder.' });
-      if (sessionCookieConsent !== true) return sendJson(res, 400, { message: 'Debes leer el Aviso de privacidad y aceptar la cookie de sesión para continuar.' });
+      if (sessionCookieConsent !== true) return sendJson(res, 400, { message: 'Debes aceptar la cookie necesaria para iniciar sesión.' });
       const ip = getClientIp(req);
       const requester = req.url === '/api/register' ? getSessionUser(req) : null;
       if (req.url === '/api/login') {
