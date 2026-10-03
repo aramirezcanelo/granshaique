@@ -372,7 +372,9 @@ input[type="file"]::-webkit-file-upload-button:hover {
 .auth-message { min-height: 1.2em; margin: 0; font-size: .84rem; }
 .auth-message.is-success { color: #0f766e; }
 .auth-message.is-error { color: #b91c1c; }
-.manual-link { display: block; width: max-content; margin: 12px auto 0; text-decoration: none; }
+.auth-legal-links { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 18px; margin-top: 12px; }
+.auth-legal-links a, .manual-link { min-height: 32px; display: inline-flex; align-items: center; padding: 4px 0; color: var(--primary-dark); font-size: .8rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.manual-link { width: max-content; margin: 0; border: 0; background: transparent; cursor: pointer; font-family: inherit; }
 
 .login-challenge {
   display: grid;
@@ -600,18 +602,47 @@ input[type="file"]::-webkit-file-upload-button:hover {
 }
 
 @media (max-width: 820px) {
-  body { min-height: 100vh; align-content: start; padding: 12px; }
+  body:has(.app-shell) { min-height: 100dvh; align-content: center; padding: 10px; }
   .app-shell {
     width: min(100%, 480px);
     grid-template-columns: 1fr;
     min-height: auto;
     margin-block: auto;
-    border-radius: 22px;
+    border-radius: 20px;
   }
-  .hero-panel { min-height: 150px; padding: 28px 24px 18px; }
-  .hero-panel h1 { max-width: none; font-size: clamp(2rem, 8vw, 3.1rem); }
-  .auth-panel { padding: 18px 14px; }
-  .auth-card { width: 100%; margin-inline: auto; }
+  .hero-panel { min-height: 82px; padding: 14px 20px 8px; }
+  .hero-panel h1 { max-width: none; margin: 0; font-size: clamp(1.55rem, 7vw, 2.25rem); }
+  .auth-panel { padding: 8px 12px 14px; }
+  .auth-card { width: 100%; margin-inline: auto; padding: 18px 18px 14px; border-radius: 18px; }
+  .eyebrow { margin-bottom: 4px; padding: 5px 10px; }
+  .auth-card h2 { margin-bottom: 12px; font-size: 1.65rem; }
+  .auth-form { gap: 11px; }
+  .field { gap: 5px; }
+  .field input { padding: 11px 12px; }
+  .toggle-pass-icon { min-width: 40px; min-height: 40px; }
+  .login-challenge { gap: 6px; padding: 9px 11px; }
+  .challenge-prompt { font-size: .95rem; }
+  .challenge-help { font-size: .7rem; }
+  .auth-form > .btn { min-height: 40px; padding-block: 8px; }
+  .auth-message { min-height: 1em; font-size: .78rem; }
+  .registration-status-message { margin: -5px 0 0; font-size: .75rem; }
+  .auth-legal-links { gap: 4px 16px; margin-top: 6px; }
+  .auth-legal-links a, .manual-link { min-height: 30px; font-size: .76rem; }
+}
+
+@media (max-width: 820px) and (max-height: 720px) {
+  body:has(.app-shell) { padding: 6px; }
+  .hero-panel { min-height: 58px; padding: 8px 18px 4px; }
+  .hero-panel h1 { font-size: clamp(1.35rem, 6vw, 1.75rem); }
+  .auth-panel { padding: 4px 10px 8px; }
+  .auth-card { padding: 12px 16px 10px; }
+  .eyebrow { display: none; }
+  .auth-card h2 { margin-bottom: 8px; font-size: 1.45rem; }
+  .auth-form { gap: 8px; }
+  .login-challenge { gap: 4px; padding: 6px 9px; }
+  .login-challenge legend { font-size: .76rem; }
+  .challenge-help { line-height: 1.25; }
+  .auth-legal-links { margin-top: 3px; }
 }
 
 @media (max-height: 700px) and (min-width: 821px) {
@@ -783,17 +814,10 @@ input[type="file"]::-webkit-file-upload-button:hover {
 
 .panel-flip-container {
   min-height: 160px;
-  transition: transform 0.18s ease-in, opacity 0.18s ease-in, filter 0.18s ease-in;
-  transform-origin: 50% 20%;
 }
 
-.panel-flip-container.flipping { transform: translateY(12px) scale(0.985); opacity: 0; filter: blur(6px); }
-.panel-flip-container.panel-arriving { animation: dashboard-panel-arrive 0.46s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.panel-flip-container[aria-busy="true"] { cursor: progress; }
 
-@keyframes dashboard-panel-arrive {
-  from { opacity: 0; filter: blur(7px); transform: translateY(-12px) scale(0.985); }
-  to { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
-}
 
 .user-controls { display: flex; gap: 10px; margin-bottom: 12px; }
 .search-input { flex: 1; }
@@ -1998,10 +2022,8 @@ input[type="password"], textarea, .search-input {
 }
 
 @media (max-width: 520px) {
-  body { padding: 12px; }
+  body:has(.app-shell) { padding: 8px; }
   .app-shell { width: 100%; }
-  .auth-panel { padding: 18px 14px; }
-  .auth-card { padding: 26px 20px 22px; }
   .topbar { align-items: flex-start; }
   .topbar-user { width: 100%; justify-content: space-between; }
   .topbar-actions { justify-content: flex-start; }

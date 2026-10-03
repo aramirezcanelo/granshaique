@@ -53,7 +53,10 @@ export function authView() {
             <button class="btn ghost" type="button" id="registerBtn" disabled>Consultando inscripciones…</button>
             <p id="registrationStatusMessage" class="registration-status-message" role="status"></p>
           </form>
-          <button class="btn ghost manual-link" type="button" id="manualBtn">Manual de uso</button>
+          <nav class="auth-legal-links" aria-label="Información y ayuda">
+            <a href="./docs/privacy.html">Aviso de privacidad y cookies</a>
+            <button class="manual-link" type="button" id="manualBtn">Manual de uso</button>
+          </nav>
         </div>
       </section>
     </div>

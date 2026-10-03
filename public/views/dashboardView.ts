@@ -1290,30 +1290,21 @@ export function dashboardView(session = {}) {
   const container = document.getElementById('panelContentContainer');
 
   const toggleButton = document.getElementById('togglePanelBtn');
-  toggleButton.addEventListener('click', () => {
+  toggleButton.addEventListener('click', async () => {
     if (toggleButton.disabled) return;
     toggleButton.disabled = true;
-    container.classList.add('flipping');
     container.setAttribute('aria-busy', 'true');
-    window.setTimeout(async () => {
-      panelMode = panelMode === 'users' ? 'courses' : 'users';
-      selectedTypeForForm = null;
-      orderModeActive = false;
-      try {
-        await renderPanel();
-      } catch {
-        document.getElementById('panelContent').innerHTML = '<p class="empty-state">No se pudo cargar esta sección. Intenta actualizar el panel.</p>';
-      } finally {
-        container.classList.remove('flipping', 'panel-arriving');
-        void container.offsetWidth;
-        container.setAttribute('aria-busy', 'false');
-        container.classList.add('panel-arriving');
-        window.setTimeout(() => {
-        container.classList.remove('panel-arriving');
-        toggleButton.disabled = false;
-        }, 460);
-      }
-    }, 180);
+    panelMode = panelMode === 'users' ? 'courses' : 'users';
+    selectedTypeForForm = null;
+    orderModeActive = false;
+    try {
+      await renderPanel();
+    } catch {
+      document.getElementById('panelContent').innerHTML = '<p class="empty-state">No se pudo cargar esta sección. Intenta actualizar el panel.</p>';
+    } finally {
+      container.setAttribute('aria-busy', 'false');
+      toggleButton.disabled = false;
+    }
   });
 
   document.getElementById('refreshDashboardBtn').addEventListener('click', renderPanel);
